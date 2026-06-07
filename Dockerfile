@@ -1,7 +1,6 @@
 # Stage 1: Build
 FROM node:22-alpine AS builder
 WORKDIR /app
-RUN apk add --no-cache cairo-dev pango-dev giflib-dev libjpeg-turbo-dev librsvg-dev pixman-dev
 COPY package.json package-lock.json ./
 RUN npm install
 COPY . .
@@ -12,7 +11,7 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN apk add --no-cache cairo pango giflib libjpeg-turbo librsvg pixman su-exec
+RUN apk add --no-cache su-exec
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
