@@ -1,19 +1,13 @@
-# Stage 1: Install dependencies
-FROM node:22-alpine AS deps
-WORKDIR /app
-RUN apk add --no-cache cairo pango giflib libjpeg-turbo librsvg pixman
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
-
-# Stage 2: Build
+# Stage 1: Build
 FROM node:22-alpine AS builder
 WORKDIR /app
+RUN apk add --no-cache cairo-dev pango-dev giflib-dev libjpeg-turbo-dev librsvg-dev pixman-dev
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-# Stage 3: Production runner
+# Stage 2: Production runner
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
