@@ -3,7 +3,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache cairo-dev pango-dev giflib-dev libjpeg-turbo-dev librsvg-dev pixman-dev
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install
 COPY . .
 RUN npm run build
 
