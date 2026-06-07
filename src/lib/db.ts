@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import crypto from "crypto";
+import { hashPassword } from "./auth";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_PATH = path.join(DATA_DIR, "pdfai.db");
@@ -13,8 +14,22 @@ export function getDb(): Database.Database {
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     initSchema(db);
+    seedAdminUser(db);
   }
   return db;
+}
+
+function seedAdminUser(database: Database.Database): void {
+  const existing = database.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number };
+  if (existing.count > 0) return;
+
+  const username = process.env.ADMIN_USERNAME?.trim();
+  const password = process.env.ADMIN_PASSWORD?.trim();
+  if (!username || !password) return;
+
+  const passwordHash = hashPassword(password);
+  database.prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)").run(username, passwordHash);
+  console.log(`Admin user "${username}" created from environment variables.`);
 }
 
 function initSchema(db: Database.Database): void {

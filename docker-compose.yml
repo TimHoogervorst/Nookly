@@ -8,6 +8,9 @@ services:
     volumes:
       - pdfai_data:/app/data
     restart: unless-stopped
+    environment:
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
 
 volumes:
   pdfai_data:

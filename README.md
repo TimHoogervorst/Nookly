@@ -32,11 +32,17 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 git clone https://github.com/TimHoogervorst/Nookly.git
 cd Nookly
 
+# Set admin credentials (only used to seed the first user)
+export ADMIN_USERNAME=admin
+export ADMIN_PASSWORD=your-secure-password
+
 # Start with Docker Compose
 docker compose up -d
 ```
 
 The app will be available at [http://localhost:3000](http://localhost:3000). Data is persisted in a Docker volume (`pdfai_data`).
+
+Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` to seed the initial admin account on first launch. These are only used when the database has no existing users — once created, you can change the password from the Settings page.
 
 ## License
 
