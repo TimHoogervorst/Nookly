@@ -10,12 +10,28 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const session = getUserSession(token);
     if (!session) {
-      return NextResponse.json({ user: null });
+      // Stale cookie — session not in DB. Clear it so the proxy
+      // doesn't keep thinking the user is authenticated.
+      const response = NextResponse.json({ user: null });
+      response.cookies.set("session", "", {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 0,
+      });
+      return response;
     }
 
     const user = getUserById(session.user_id);
     if (!user) {
-      return NextResponse.json({ user: null });
+      const response = NextResponse.json({ user: null });
+      response.cookies.set("session", "", {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 0,
+      });
+      return response;
     }
 
     return NextResponse.json({ user: { id: user.id, username: user.username } });

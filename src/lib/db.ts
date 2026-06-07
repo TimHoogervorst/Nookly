@@ -14,18 +14,26 @@ export function getDb(): Database.Database {
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     initSchema(db);
-    seedAdminUser(db);
   }
   return db;
 }
 
-function seedAdminUser(database: Database.Database): void {
+export function seedAdminUser(): void {
+  const database = getDb();
   const existing = database.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number };
   if (existing.count > 0) return;
 
   const username = process.env.ADMIN_USERNAME?.trim();
   const password = process.env.ADMIN_PASSWORD?.trim();
-  if (!username || !password) return;
+  if (!username || !password) {
+    console.log("No ADMIN_USERNAME/ADMIN_PASSWORD env vars set — admin not seeded.");
+    return;
+  }
+
+  if (password.length < 6) {
+    console.log("ADMIN_PASSWORD must be at least 6 characters — admin not seeded.");
+    return;
+  }
 
   const passwordHash = hashPassword(password);
   database.prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)").run(username, passwordHash);

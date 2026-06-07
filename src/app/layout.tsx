@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
 import UserMenu from "@/components/UserMenu";
+import AuthGuard from "@/components/AuthGuard";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -48,8 +49,10 @@ export default function RootLayout({
         />
       </head>
       <body className="h-screen overflow-hidden flex flex-col bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors">
-        <Header />
-        <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
+        <AuthGuard>
+          <Header />
+          <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
+        </AuthGuard>
       </body>
     </html>
   );

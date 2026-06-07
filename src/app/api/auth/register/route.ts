@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { countUsers, createUser, createUserSession } from "@/lib/db";
+import { countUsers, createUser, createUserSession, seedAdminUser } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
+    // Try seeding from env vars first (safety net)
+    seedAdminUser();
+
     // Only allow registration when no users exist
     if (countUsers() > 0) {
       return NextResponse.json({ error: "Registration is closed" }, { status: 403 });
