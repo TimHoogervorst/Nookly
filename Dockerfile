@@ -17,6 +17,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
+# Standalone file tracing misses dynamically-loaded pdfjs-dist worker
+# and the @napi-rs/canvas native binary. Copy both from the builder.
+COPY --from=builder /app/node_modules/pdfjs-dist ./node_modules/pdfjs-dist
+COPY --from=builder /app/node_modules/@napi-rs/canvas ./node_modules/@napi-rs/canvas
+
 # Entrypoint script (handles PUID/PGID and volume permissions)
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
