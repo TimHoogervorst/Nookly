@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import path from "path";
+import crypto from "crypto";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_PATH = path.join(DATA_DIR, "pdfai.db");
@@ -535,16 +536,16 @@ export interface Session {
   created_at: string;
 }
 
-export function createSession(userId: number): string {
-  const token = require("crypto").randomBytes(32).toString("hex");
+export function createUserSession(userId: number): string {
+  const token = crypto.randomBytes(32).toString("hex");
   getDb().prepare("INSERT INTO sessions (id, user_id) VALUES (?, ?)").run(token, userId);
   return token;
 }
 
-export function getSession(token: string): Session | undefined {
+export function getUserSession(token: string): Session | undefined {
   return getDb().prepare("SELECT * FROM sessions WHERE id = ?").get(token) as Session | undefined;
 }
 
-export function deleteSession(token: string): void {
+export function deleteUserSession(token: string): void {
   getDb().prepare("DELETE FROM sessions WHERE id = ?").run(token);
 }

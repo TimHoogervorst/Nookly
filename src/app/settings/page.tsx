@@ -13,6 +13,12 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  // Password change
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pwMessage, setPwMessage] = useState("");
+  const [changingPw, setChangingPw] = useState(false);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -64,6 +70,39 @@ export default function SettingsPage() {
       setMessage("Failed to save settings.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPwMessage("");
+    if (newPassword !== confirmPassword) {
+      setPwMessage("New passwords do not match");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPwMessage("New password must be at least 6 characters");
+      return;
+    }
+    setChangingPw(true);
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPwMessage("Password changed successfully!");
+        setOldPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      } else {
+        setPwMessage(`Error: ${data.error}`);
+      }
+    } catch {
+      setPwMessage("Failed to change password");
+    } finally {
+      setChangingPw(false);
     }
   };
 
@@ -195,6 +234,69 @@ export default function SettingsPage() {
             {message}
           </div>
         )}
+
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Account</h2>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Current Password
+            </label>
+            <input
+              type="password"
+              value={oldPassword}
+              onChange={(e) => setOldPassword(e.target.value)}
+              autoComplete="current-password"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              New Password
+            </label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              autoComplete="new-password"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Confirm New Password
+            </label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          <button
+            onClick={handleChangePassword}
+            disabled={changingPw || !oldPassword || !newPassword || !confirmPassword}
+            className="w-full py-2.5 bg-gray-700 dark:bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-800 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {changingPw ? "Changing..." : "Change Password"}
+          </button>
+
+          {pwMessage && (
+            <div
+              className={`mt-3 p-3 rounded-lg text-sm ${
+                pwMessage.startsWith("Error") || pwMessage.startsWith("Failed") || pwMessage.startsWith("New")
+                  ? "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800/30"
+                  : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800/30"
+              }`}
+            >
+              {pwMessage}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

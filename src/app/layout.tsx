@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
+import UserMenu from "@/components/UserMenu";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -69,7 +70,8 @@ function Header() {
           Settings
         </Link>
       </nav>
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-3">
+        <UserMenu />
         <ThemeToggle />
       </div>
     </header>

@@ -8,3 +8,5 @@ docker-compose.yml
 docker-compose.dev.yml
 Dockerfile
 Dockerfile.dev
+
+./data
