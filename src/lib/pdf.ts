@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
-import { PDFParse } from "pdf-parse";
+import * as pdfjsLib from "pdfjs-dist";
 
 const PDFS_DIR = path.join(process.cwd(), "data", "pdfs");
 
@@ -44,7 +44,7 @@ export async function deletePdfFile(filename: string): Promise<void> {
 }
 
 /**
- * Extract full text from a PDF buffer using pdf-parse v2.
+ * Extract full text from a PDF buffer using pdfjs-dist directly.
  * Returns per-page text arrays, full text, and page count.
  */
 export async function extractPdfFullText(buffer: Uint8Array): Promise<{
@@ -52,21 +52,22 @@ export async function extractPdfFullText(buffer: Uint8Array): Promise<{
   pageCount: number;
   pages: string[];
 }> {
-  const parser = new PDFParse({ data: buffer });
+  const loadingTask = pdfjsLib.getDocument({ data: buffer });
+  const pdf = await loadingTask.promise;
 
-  try {
-    const textResult = await parser.getText();
-
-    const pages = textResult.pages
-      .sort((a, b) => a.num - b.num)
-      .map((p) => p.text);
-
-    return {
-      text: textResult.text,
-      pageCount: textResult.total,
-      pages,
-    };
-  } finally {
-    await parser.destroy();
+  const pages: string[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .join(" ");
+    pages.push(pageText);
   }
+
+  return {
+    text: pages.join("\n\n"),
+    pageCount: pdf.numPages,
+    pages,
+  };
 }

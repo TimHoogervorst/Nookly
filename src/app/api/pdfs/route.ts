@@ -59,9 +59,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 async function processPdfInBackground(pdfId: number, buffer: Uint8Array): Promise<void> {
+  console.log(`[pdf:${pdfId}] Starting background processing (${(buffer.length / 1024).toFixed(0)} KB)...`);
   try {
     // Extract text
     const { pages: pageTexts, pageCount } = await extractPdfFullText(buffer);
+    console.log(`[pdf:${pdfId}] Text extracted: ${pageCount} pages`);
 
     // Update page count
     getDb().prepare("UPDATE pdfs SET page_count = ? WHERE id = ?").run(pageCount, pdfId);
@@ -101,6 +103,9 @@ async function processPdfInBackground(pdfId: number, buffer: Uint8Array): Promis
 
     console.log(`Processed PDF ${pdfId}: ${pageCount} pages, embeddings generated`);
   } catch (err) {
-    console.error(`PDF processing error for ${pdfId}:`, err);
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : "";
+    console.error(`[pdf:${pdfId}] Processing failed: ${message}`);
+    if (stack) console.error(`[pdf:${pdfId}] Stack:`, stack);
   }
 }

@@ -113,8 +113,10 @@ async function fetchPdfWithRetry(url: string): Promise<Buffer | null> {
 }
 
 async function processPdfInBackground(pdfId: number, buffer: Uint8Array): Promise<void> {
+  console.log(`[pdf:${pdfId}] Starting background processing (${(buffer.length / 1024).toFixed(0)} KB)...`);
   try {
     const { pages: pageTexts, pageCount } = await extractPdfFullText(buffer);
+    console.log(`[pdf:${pdfId}] Text extracted: ${pageCount} pages`);
     getDb().prepare("UPDATE pdfs SET page_count = ? WHERE id = ?").run(pageCount, pdfId);
 
     const apiKey = getSetting("api_key");
@@ -134,6 +136,9 @@ async function processPdfInBackground(pdfId: number, buffer: Uint8Array): Promis
       }
     }
   } catch (err) {
-    console.error(`PDF processing error for ${pdfId}:`, err);
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : "";
+    console.error(`[pdf:${pdfId}] Processing failed: ${message}`);
+    if (stack) console.error(`[pdf:${pdfId}] Stack:`, stack);
   }
 }
