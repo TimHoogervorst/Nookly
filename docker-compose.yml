@@ -9,6 +9,8 @@ services:
       - pdfai_data:/app/data
     restart: unless-stopped
     environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
 
