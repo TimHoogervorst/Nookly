@@ -37,3 +37,7 @@ docker compose up -d
 ```
 
 The app will be available at [http://localhost:3000](http://localhost:3000). Data is persisted in a Docker volume (`pdfai_data`).
+
+## License
+
+[MIT](LICENSE)
