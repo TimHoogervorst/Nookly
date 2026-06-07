@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 export default function LoginPage() {
   const router = useRouter();
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [adminCreated, setAdminCreated] = useState(false);
+  const [adminUsername, setAdminUsername] = useState("");
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -28,6 +30,8 @@ export default function LoginPage() {
       .then((r) => r.json())
       .then((data) => {
         setNeedsSetup(data.needsSetup);
+        setAdminCreated(data.adminCreated || false);
+        setAdminUsername(data.adminUsername || "");
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -80,7 +84,11 @@ export default function LoginPage() {
           <img src="/logo.png" alt="Nookly" className="h-16 w-auto mb-3" />
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Nookly</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {needsSetup ? "Create your admin account" : "Sign in to continue"}
+            {needsSetup
+              ? "Create your admin account"
+              : adminCreated
+                ? `Admin "${adminUsername}" created — sign in below`
+                : "Sign in to continue"}
           </p>
         </div>
 
