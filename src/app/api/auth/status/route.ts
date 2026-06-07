@@ -5,6 +5,7 @@ import { hashPassword } from "@/lib/auth";
 export async function GET(): Promise<NextResponse> {
   try {
     const userCount = countUsers();
+    console.log(`[auth/status] userCount=${userCount}, ADMIN_USERNAME=${process.env.ADMIN_USERNAME || "(not set)"}`);
 
     if (userCount === 0) {
       // No users yet — try to seed the admin from environment variables
@@ -33,6 +34,7 @@ export async function GET(): Promise<NextResponse> {
     // Users already exist — normal login
     return NextResponse.json({ needsSetup: false, adminCreated: false });
   } catch (error) {
+    console.error("[auth/status] error:", error);
     return NextResponse.json({ error: "Failed to check status" }, { status: 500 });
   }
 }
