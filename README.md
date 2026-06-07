@@ -52,6 +52,7 @@ The app will be available at [http://localhost:3000](http://localhost:3000). Dat
 | `ADMIN_PASSWORD` | — | Password for the initial admin account |
 | `PUID` | `1000` | User ID the container runs as (for host file permissions) |
 | `PGID` | `1000` | Group ID the container runs as |
+| `COOKIE_SECURE` | `false` | Set to `true` if serving over HTTPS (reverse proxy with SSL) |
 
 ## License
 

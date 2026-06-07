@@ -13,6 +13,7 @@ services:
       - PGID=${PGID:-1000}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
 
 volumes:
   pdfai_data:
