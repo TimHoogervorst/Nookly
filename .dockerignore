@@ -1,0 +1,10 @@
+node_modules
+.git
+.next
+data
+*.md
+.claude
+docker-compose.yml
+docker-compose.dev.yml
+Dockerfile
+Dockerfile.dev

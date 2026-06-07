@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --color-nookly: #012B67;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 @theme inline {
@@ -10,17 +18,66 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Nookly navy blue palette */
+  --color-blue-50: #e6ecf3;
+  --color-blue-100: #b3c4da;
+  --color-blue-200: #809dc2;
+  --color-blue-300: #4d75a9;
+  --color-blue-400: #1a4e91;
+  --color-blue-500: #012B67;
+  --color-blue-600: #01255a;
+  --color-blue-700: #011f4d;
+  --color-blue-800: #011840;
+  --color-blue-900: #001233;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans, Arial, Helvetica, sans-serif);
 }
+
+/* PDF viewer styles */
+.react-pdf__Page {
+  margin: 0 auto;
+}
+
+.react-pdf__Page__canvas {
+  max-width: 100%;
+  height: auto !important;
+}
+
+/* Ensure text layer stays transparent in dark mode */
+.react-pdf__Page__textContent,
+.react-pdf__Page__textContent span {
+  color: transparent !important;
+}
+.react-pdf__Page__textContent ::selection {
+  background: rgba(0, 100, 255, 0.3);
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+

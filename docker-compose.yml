@@ -1,0 +1,13 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - pdfai_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  pdfai_data:
