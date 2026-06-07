@@ -1,6 +1,7 @@
 # Stage 1: Install dependencies
 FROM node:22-alpine AS deps
 WORKDIR /app
+RUN apk add --no-cache cairo pango giflib libjpeg-turbo librsvg pixman
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
@@ -16,6 +17,8 @@ RUN npm run build
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+
+RUN apk add --no-cache cairo pango giflib libjpeg-turbo librsvg pixman
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
