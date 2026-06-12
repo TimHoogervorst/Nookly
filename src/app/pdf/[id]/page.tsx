@@ -22,6 +22,8 @@ export default function PDFReaderPage() {
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [rightPanel, setRightPanel] = useState<RightPanel>("chat");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarManuallyClosed, setSidebarManuallyClosed] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -81,28 +83,31 @@ export default function PDFReaderPage() {
       await fetch("/api/highlights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pdf_id: pdfId, page_number: page, color: "#fef08a", anchor_data: { rect: anchor.rect, text: anchor.text, page_number: page } }),
+        body: JSON.stringify({ pdf_id: pdfId, page_number: page, color: "#fef08a", anchor_data: { rect: anchor.rect, rects: anchor.rects, text: anchor.text, page_number: page } }),
       });
       refreshData();
+      setRefreshKey(k => k + 1);
     } catch (err) { console.error("Failed to create highlight:", err); }
   }, [pdfId, currentPage, refreshData]);
 
   const handleSendToChat = useCallback((text: string) => {
     setSelectionText(text);
     setRightPanel("chat");
+    setSidebarManuallyClosed(false);
     setSidebarOpen(true);
   }, []);
 
   const handleCommentClick = useCallback((commentId: number) => {
     setHighlightedCommentId(commentId);
     setRightPanel("comments");
-    setSidebarOpen(true);
-  }, []);
+    if (!sidebarManuallyClosed) setSidebarOpen(true);
+  }, [sidebarManuallyClosed]);
 
   const handleCommentDelete = useCallback(async (commentId: number) => {
     try {
       await fetch(`/api/comments/${commentId}`, { method: "DELETE" });
       refreshData();
+      setRefreshKey(k => k + 1);
     } catch (err) { console.error("Failed to delete comment:", err); }
   }, [refreshData]);
 
@@ -110,6 +115,7 @@ export default function PDFReaderPage() {
     try {
       await fetch(`/api/highlights/${highlightId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ color }) });
       refreshData();
+      setRefreshKey(k => k + 1);
     } catch (err) { console.error("Failed to update highlight color:", err); }
   }, [refreshData]);
 
@@ -117,13 +123,16 @@ export default function PDFReaderPage() {
     try {
       await fetch(`/api/highlights/${highlightId}`, { method: "DELETE" });
       refreshData();
+      setRefreshKey(k => k + 1);
     } catch (err) { console.error("Failed to delete highlight:", err); }
   }, [refreshData]);
 
   const handleAnchorConsumed = useCallback(() => {
     setPendingAnchor(null);
     refreshData();
-  }, [refreshData]);
+    setRefreshKey(k => k + 1);
+    if (sidebarManuallyClosed) setSidebarOpen(false);
+  }, [refreshData, sidebarManuallyClosed]);
 
   if (loading) return <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-950"><div className="text-gray-500 dark:text-gray-400">Loading PDF...</div></div>;
   if (error || !pdf) return <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-950"><div className="text-red-500">{error || "PDF not found"}</div></div>;
@@ -151,7 +160,7 @@ export default function PDFReaderPage() {
         <div className="w-[420px] shrink-0 border-l border-gray-200 dark:border-gray-700 flex flex-col">
           <div className="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
             <button
-              onClick={() => setSidebarOpen(false)}
+              onClick={() => { setSidebarManuallyClosed(true); setSidebarOpen(false); }}
               className="px-3 py-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               title="Hide panel"
             >
@@ -171,7 +180,8 @@ export default function PDFReaderPage() {
                 selectionText={selectionText} onSelectionConsumed={() => setSelectionText(null)} />
             ) : (
               <CommentPanel pdfId={pdfId} pageNumber={currentPage} pendingAnchor={pendingAnchor}
-                onAnchorConsumed={handleAnchorConsumed} onCommentAdded={refreshData}
+                onAnchorConsumed={handleAnchorConsumed} refreshKey={refreshKey}
+                onChange={() => { refreshData(); setRefreshKey(k => k + 1); }}
                 highlightedCommentId={highlightedCommentId} />
             )}
           </div>
@@ -179,7 +189,7 @@ export default function PDFReaderPage() {
       ) : (
         <div className="shrink-0 flex flex-col border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
           <button
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => { setSidebarManuallyClosed(false); setSidebarOpen(true); }}
             className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
             title="Show panel"
           >
@@ -189,7 +199,7 @@ export default function PDFReaderPage() {
           </button>
           <div className="flex-1 flex flex-col items-center pt-2 gap-4">
             <button
-              onClick={() => { setSidebarOpen(true); setRightPanel("chat"); }}
+              onClick={() => { setSidebarManuallyClosed(false); setSidebarOpen(true); setRightPanel("chat"); }}
               className={`writing-vertical py-3 px-2 text-xs font-medium transition-colors rounded ${rightPanel === "chat" ? "text-blue-600 bg-blue-50 dark:bg-blue-900/20" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"}`}
               title="Chat"
               style={{ writingMode: "vertical-rl" }}
@@ -197,7 +207,7 @@ export default function PDFReaderPage() {
               Chat
             </button>
             <button
-              onClick={() => { setSidebarOpen(true); setRightPanel("comments"); }}
+              onClick={() => { setSidebarManuallyClosed(false); setSidebarOpen(true); setRightPanel("comments"); }}
               className={`writing-vertical py-3 px-2 text-xs font-medium transition-colors rounded relative ${rightPanel === "comments" ? "text-blue-600 bg-blue-50 dark:bg-blue-900/20" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"}`}
               title="Comments"
               style={{ writingMode: "vertical-rl" }}

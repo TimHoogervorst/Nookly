@@ -16,7 +16,7 @@ const HL_COLORS = ["#fef08a", "#bbf7d0", "#bfdbfe", "#fecaca", "#ddd6fe", "#fed7
 
 export interface PositionAnchor { x: number; y: number; }
 export interface RectAnchor { left: number; top: number; right: number; bottom: number; }
-export interface TextAnchor { text: string; rect: RectAnchor; pageNumber?: number; }
+export interface TextAnchor { text: string; rect: RectAnchor; rects?: RectAnchor[]; pageNumber?: number; }
 
 interface CommentMarker {
   id: number; page_number: number; type: "text_anchor" | "position";
@@ -65,7 +65,7 @@ export default function PDFViewer({
   }, [scale]);
 
   // ── Selection popup ───────────────────────────
-  const [selPopup, setSelPopup] = useState<{ x: number; y: number; text: string; rect: RectAnchor; pageNumber: number } | null>(null);
+  const [selPopup, setSelPopup] = useState<{ x: number; y: number; text: string; rect: RectAnchor; rects: RectAnchor[]; pageNumber: number } | null>(null);
   useEffect(() => {
     const h = (e: MouseEvent) => {
       setTimeout(() => {
@@ -75,16 +75,41 @@ export default function PDFViewer({
         if (txt.length < 2) { setSelPopup(null); return; }
         const c = containerRef.current;
         if (!c || !c.contains(s.getRangeAt(0).commonAncestorContainer)) { setSelPopup(null); return; }
-        const pageEl = (s.getRangeAt(0).commonAncestorContainer as Element).closest?.(".react-pdf__Page");
+        const ancestor = s.getRangeAt(0).commonAncestorContainer;
+        const ancestorEl = ancestor.nodeType === Node.TEXT_NODE ? ancestor.parentElement! : (ancestor as Element);
+        const pageEl = ancestorEl?.closest?.(".react-pdf__Page");
         if (!pageEl) { setSelPopup(null); return; }
         const pageWrapper = pageEl.closest("[data-page]") as HTMLElement | null;
         const pageNum = pageWrapper ? parseInt(pageWrapper.dataset.page || "1") : 1;
-        const pr = pageEl.getBoundingClientRect();
-        const sr = s.getRangeAt(0).getBoundingClientRect();
+        const dw = pageWrapper!.getBoundingClientRect();
+        const range = s.getRangeAt(0);
+        const sr = range.getBoundingClientRect();
+        const clientRects = Array.from(range.getClientRects());
+
+        // Merge rects on the same visual line to avoid fragment overlaps
+        const lines: DOMRect[][] = [];
+        for (const cr of clientRects) {
+          const line = lines.find(l => Math.abs(l[0].top - cr.top) < 3);
+          if (line) line.push(cr);
+          else lines.push([cr]);
+        }
+
+        const rects: RectAnchor[] = lines.map(line => {
+          const l = Math.min(...line.map(r => r.left));
+          const r = Math.max(...line.map(r => r.right));
+          const t = Math.min(...line.map(r => r.top));
+          const b = Math.max(...line.map(r => r.bottom));
+          return {
+            left: (l - dw.left) / dw.width,
+            top: (t - dw.top) / dw.height,
+            right: (r - dw.left) / dw.width,
+            bottom: (b - dw.top) / dw.height,
+          };
+        });
         setSelPopup({ x: sr.right + 4, y: sr.top - 12, text: txt, pageNumber: pageNum, rect: {
-          left: (sr.left - pr.left) / pr.width, top: (sr.top - pr.top) / pr.height,
-          right: (sr.right - pr.left) / pr.width, bottom: (sr.bottom - pr.top) / pr.height,
-        }});
+          left: (sr.left - dw.left) / dw.width, top: (sr.top - dw.top) / dw.height,
+          right: (sr.right - dw.left) / dw.width, bottom: (sr.bottom - dw.top) / dw.height,
+        }, rects });
       }, 10);
     };
     document.addEventListener("mouseup", h);
@@ -114,18 +139,6 @@ export default function PDFViewer({
     document.addEventListener("mousedown", close, true);
     return () => document.removeEventListener("mousedown", close, true);
   }, [cmPopup]);
-
-  // ── Click-to-comment ───────────────────────────
-  const handlePageClick = useCallback((e: React.MouseEvent) => {
-    if (window.getSelection()?.toString().trim()) return;
-    const target = e.target as HTMLElement;
-    if (target.closest("[data-highlight-id]") || target.closest("[data-comment-id]")) return;
-    const pageEl = target.closest?.(".react-pdf__Page");
-    if (!pageEl || !onPositionClick) return;
-    const pr = pageEl.getBoundingClientRect();
-    const x = (e.clientX - pr.left) / pr.width, y = (e.clientY - pr.top) / pr.height;
-    if (x >= 0 && x <= 1 && y >= 0 && y <= 1) onPositionClick({ x, y });
-  }, [onPositionClick]);
 
   // ── Track visible page ─────────────────────────
   useEffect(() => {
@@ -158,7 +171,7 @@ export default function PDFViewer({
       </div>
 
       {/* PDF content */}
-      <div ref={containerRef} className="flex-1 overflow-auto flex flex-col items-center p-4 gap-4 relative" onClick={handlePageClick}>
+      <div ref={containerRef} className="flex-1 overflow-auto flex flex-col items-center p-4 gap-4 relative">
         {error ? (
           <p className="text-red-500">{error}</p>
         ) : (
@@ -171,16 +184,19 @@ export default function PDFViewer({
                 {/* Highlight overlays */}
                 {highlights.filter(h => { try { const a=JSON.parse(h.anchor_data); return (a.page_number||a.pageNumber)===pn||h.page_number===pn } catch { return true } }).map(h => {
                   try {
-                    const a = JSON.parse(h.anchor_data); if (!a.rect) return null;
-                    const w = Math.max((a.rect.right - a.rect.left) * 100, 2);
-                    const ht = Math.max((a.rect.bottom - a.rect.top) * 100, 3);
-                    return (
-                      <div key={`hl-${h.id}`} data-highlight-id={h.id}
-                        onClick={e => { e.stopPropagation(); const r = (e.target as HTMLElement).getBoundingClientRect(); setHlPopup({ x: r.right, y: r.bottom - 4, highlightId: h.id, color: h.color }); }}
-                        className="absolute cursor-pointer opacity-35 hover:opacity-55 transition-opacity z-10"
-                        style={{ backgroundColor: h.color, left: `${a.rect.left*100}%`, top: `${a.rect.top*100}%`, width: `${w}%`, height: `${ht}%` }}
-                      />
-                    );
+                    const a = JSON.parse(h.anchor_data);
+                    const rects: RectAnchor[] = a.rects || (a.rect ? [a.rect] : []);
+                    return rects.map((r, i) => {
+                      const w = Math.max((r.right - r.left) * 100, 2);
+                      const ht = Math.max((r.bottom - r.top) * 100, 3);
+                      return (
+                        <div key={`hl-${h.id}-${i}`} data-highlight-id={h.id}
+                          onClick={e => { e.stopPropagation(); const b = (e.target as HTMLElement).getBoundingClientRect(); setHlPopup({ x: b.right, y: b.bottom - 4, highlightId: h.id, color: h.color }); }}
+                          className="absolute cursor-pointer opacity-35 hover:opacity-55 transition-opacity z-10"
+                          style={{ backgroundColor: h.color, left: `${r.left*100}%`, top: `${r.top*100}%`, width: `${w}%`, height: `${ht}%` }}
+                        />
+                      );
+                    });
                   } catch { return null; }
                 })}
 
@@ -189,19 +205,22 @@ export default function PDFViewer({
                   try {
                     const a = JSON.parse(c.anchor_data);
                     if (c.type === "text_anchor" && a.rect) {
-                      const w = Math.max((a.rect.right - a.rect.left) * 100, 2);
-                      const ht = Math.max((a.rect.bottom - a.rect.top) * 100, 3);
+                      const rects: RectAnchor[] = a.rects || [a.rect];
                       const isHighlighted = scrollToCommentId === c.id;
-                      return (
-                        <div key={`cm-${c.id}`} data-comment-id={c.id}
-                          onClick={e => { e.stopPropagation(); const r = (e.target as HTMLElement).getBoundingClientRect(); setCmPopup({ x: r.right + 4, y: r.top, commentId: c.id, content: c.content || "" }); }}
-                          className="absolute cursor-pointer group/cm z-20"
-                          style={{ left: `${a.rect.left*100}%`, top: `${a.rect.top*100}%`, width: `${w}%`, height: `${ht}%` }}
-                        >
-                          <div className={`absolute inset-0 border-b-2 border-dashed transition-colors ${isHighlighted ? 'bg-blue-400/50 border-blue-600 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-blue-200/25 border-blue-400 group-hover/cm:bg-blue-300/35'}`} />
-                          <div className={`absolute -right-2 -top-2 w-4 h-4 rounded-full flex items-center justify-center shadow text-white text-[8px] transition-all ${isHighlighted ? 'bg-blue-600 scale-125 opacity-100' : 'bg-blue-500 opacity-0 group-hover/cm:opacity-100'}`}>💬</div>
-                        </div>
-                      );
+                      return rects.map((r, i) => {
+                        const w = Math.max((r.right - r.left) * 100, 2);
+                        const ht = Math.max((r.bottom - r.top) * 100, 3);
+                        return (
+                          <div key={`cm-${c.id}-${i}`} data-comment-id={c.id}
+                            onClick={e => { e.stopPropagation(); const b = (e.target as HTMLElement).getBoundingClientRect(); setCmPopup({ x: b.right + 4, y: b.top, commentId: c.id, content: c.content || "" }); }}
+                            className="absolute cursor-pointer group/cm z-20"
+                            style={{ left: `${r.left*100}%`, top: `${r.top*100}%`, width: `${w}%`, height: `${ht}%` }}
+                          >
+                            <div className={`absolute inset-0 border-b-2 border-dashed transition-colors ${isHighlighted ? 'bg-blue-400/50 border-blue-600 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-blue-200/25 border-blue-400 group-hover/cm:bg-blue-300/35'}`} />
+                            {i === 0 && <div className={`absolute -right-2 -top-2 w-4 h-4 rounded-full flex items-center justify-center shadow text-white text-[8px] transition-all ${isHighlighted ? 'bg-blue-600 scale-125 opacity-100' : 'bg-blue-500 opacity-0 group-hover/cm:opacity-100'}`}>💬</div>}
+                          </div>
+                        );
+                      });
                     }
                     return (
                       <div key={`cm-${c.id}`} data-comment-id={c.id}
@@ -225,13 +244,13 @@ export default function PDFViewer({
       {selPopup && (onHighlightText || onCommentText || onSendToChat) && (
         <div className="fixed z-[100] flex items-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl" style={{ left: selPopup.x, top: selPopup.y }}>
           {onHighlightText && (
-            <button onClick={() => { onHighlightText({ text: selPopup.text, rect: selPopup.rect, pageNumber: selPopup.pageNumber }); setSelPopup(null); window.getSelection()?.removeAllRanges(); }}
+            <button onClick={() => { onHighlightText({ text: selPopup.text, rect: selPopup.rect, rects: selPopup.rects, pageNumber: selPopup.pageNumber }); setSelPopup(null); window.getSelection()?.removeAllRanges(); }}
               className="p-2 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-l-lg transition-colors" title="Highlight">
               <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
             </button>
           )}
           {onCommentText && (
-            <button onClick={() => { onCommentText({ text: selPopup.text, rect: selPopup.rect, pageNumber: selPopup.pageNumber }); setSelPopup(null); window.getSelection()?.removeAllRanges(); }}
+            <button onClick={() => { onCommentText({ text: selPopup.text, rect: selPopup.rect, rects: selPopup.rects, pageNumber: selPopup.pageNumber }); setSelPopup(null); window.getSelection()?.removeAllRanges(); }}
               className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="Comment">
               <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
             </button>

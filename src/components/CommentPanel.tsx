@@ -26,7 +26,8 @@ interface Highlight {
 interface Props {
   pdfId: number;
   pageNumber: number;
-  onCommentAdded?: () => void;
+  refreshKey?: number;
+  onChange?: () => void;
   pendingAnchor?: { type: "text_anchor" | "position"; data: TextAnchor | PositionAnchor } | null;
   pendingHighlight?: { rect: RectAnchor; text: string; color: string } | null;
   onAnchorConsumed?: () => void;
@@ -36,7 +37,8 @@ interface Props {
 export default function CommentPanel({
   pdfId,
   pageNumber,
-  onCommentAdded,
+  refreshKey,
+  onChange,
   pendingAnchor,
   pendingHighlight,
   onAnchorConsumed,
@@ -77,24 +79,23 @@ export default function CommentPanel({
 
   const fetchComments = useCallback(async () => {
     try {
-      const res = await fetch(`/api/comments?pdf_id=${pdfId}&page=${pageNumber}`);
+      const res = await fetch(`/api/comments?pdf_id=${pdfId}`);
       if (res.ok) setComments(await res.json());
     } catch (err) {
       console.error("Failed to fetch comments:", err);
     }
-  }, [pdfId, pageNumber]);
+  }, [pdfId]);
 
   const fetchHighlights = useCallback(async () => {
     try {
-      const res = await fetch(`/api/highlights?pdf_id=${pdfId}&page=${pageNumber}`);
+      const res = await fetch(`/api/highlights?pdf_id=${pdfId}`);
       if (res.ok) setHighlights(await res.json());
     } catch (err) {
       console.error("Failed to fetch highlights:", err);
     }
-  }, [pdfId, pageNumber]);
+  }, [pdfId]);
 
-  useEffect(() => { fetchComments(); }, [fetchComments]);
-  useEffect(() => { fetchHighlights(); }, [fetchHighlights]);
+  useEffect(() => { fetchComments(); fetchHighlights(); }, [fetchComments, fetchHighlights, refreshKey]);
 
   const handleAddComment = async () => {
     if (!newComment.trim()) return;
@@ -114,8 +115,6 @@ export default function CommentPanel({
       });
       if (res.ok) {
         setNewComment("");
-        await fetchComments();
-        onCommentAdded?.();
         onAnchorConsumed?.();
       }
     } catch (err) {
@@ -141,7 +140,6 @@ export default function CommentPanel({
         }),
       });
       if (res.ok) {
-        await fetchHighlights();
         onAnchorConsumed?.();
       }
     } catch (err) {
@@ -164,7 +162,7 @@ export default function CommentPanel({
       });
       setEditingId(null);
       await fetchComments();
-      onCommentAdded?.();
+      onChange?.();
     } catch (err) {
       console.error("Failed to update comment:", err);
     }
@@ -174,7 +172,7 @@ export default function CommentPanel({
     try {
       await fetch(`/api/comments/${id}`, { method: "DELETE" });
       await fetchComments();
-      onCommentAdded?.();
+      onChange?.();
     } catch (err) {
       console.error("Failed to delete comment:", err);
     }
@@ -184,7 +182,7 @@ export default function CommentPanel({
     try {
       await fetch(`/api/highlights/${id}`, { method: "DELETE" });
       await fetchHighlights();
-      onCommentAdded?.();
+      onChange?.();
     } catch (err) {
       console.error("Failed to delete highlight:", err);
     }
@@ -196,6 +194,15 @@ export default function CommentPanel({
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-3">
           <h3 className="font-medium text-gray-900 dark:text-gray-100">Page {pageNumber}</h3>
+          <button
+            onClick={() => { fetchComments(); fetchHighlights(); }}
+            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            title="Refresh"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
           <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
             <button
               onClick={() => setTab("comments")}

@@ -6,7 +6,7 @@ const maxUploadSize = (process.env.MAX_UPLOAD_SIZE || "100mb") as
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: ["better-sqlite3", "@napi-rs/canvas", "pdfjs-dist"],
+  serverExternalPackages: ["better-sqlite3", "@napi-rs/canvas"],
   experimental: {
     proxyClientMaxBodySize: maxUploadSize,
   },
