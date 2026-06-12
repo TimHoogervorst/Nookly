@@ -39,7 +39,7 @@ export function seedAdminUser(): void {
 
   const passwordHash = hashPassword(password);
   database.prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)").run(username, passwordHash);
-  console.log(`Admin user "${username}" created from environment variables.`);
+  console.log("Admin user created from environment variables.");
 }
 
 function initSchema(db: Database.Database): void {

@@ -5,7 +5,7 @@ import { hashPassword } from "@/lib/auth";
 export async function GET(): Promise<NextResponse> {
   try {
     const userCount = countUsers();
-    console.log(`[auth/status] userCount=${userCount}, ADMIN_USERNAME=${process.env.ADMIN_USERNAME || "(not set)"}`);
+    console.log(`[auth/status] userCount=${userCount}`);
 
     if (userCount === 0) {
       // No users yet — try to seed the admin from environment variables
@@ -19,7 +19,7 @@ export async function GET(): Promise<NextResponse> {
           username,
           passwordHash,
         );
-        console.log(`Admin user "${username}" created from environment variables.`);
+        console.log("Admin user created from environment variables.");
         return NextResponse.json({
           needsSetup: false,
           adminCreated: true,
