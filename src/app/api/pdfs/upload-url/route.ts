@@ -15,16 +15,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "url is required" }, { status: 400 });
     }
 
-    // Validate URL
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+    const safeUrl = validateAndNormalizeExternalUrl(url);
+    if (!safeUrl) {
+      return NextResponse.json({ error: "Invalid or disallowed URL" }, { status: 400 });
     }
 
+    const parsed = new URL(safeUrl);
+
     // Try multiple fetch strategies — many hosts block non-browser requests
-    const buffer = await fetchPdfWithRetry(url);
+    const buffer = await fetchPdfWithRetry(safeUrl);
     if (!buffer) {
       return NextResponse.json(
         { error: "Could not download this PDF. The server may be blocking automated requests. Try downloading the file manually and uploading it instead." },
@@ -61,6 +60,81 @@ const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 const CURL_UA = "curl/8.0";
+
+function validateAndNormalizeExternalUrl(input: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(input);
+  } catch {
+    return null;
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return null;
+  }
+
+  if (parsed.username || parsed.password) {
+    return null;
+  }
+
+  if (isDisallowedHostname(parsed.hostname)) {
+    return null;
+  }
+
+  return parsed.toString();
+}
+
+function isDisallowedHostname(hostname: string): boolean {
+  const h = hostname.trim().toLowerCase();
+
+  if (!h) return true;
+  if (h === "localhost" || h.endsWith(".localhost")) return true;
+  if (h === "127.0.0.1" || h === "::1") return true;
+
+  // IPv6 literal in URL.hostname may appear without brackets in WHATWG URL.
+  if (h.includes(":")) {
+    return isDisallowedIPv6(h);
+  }
+
+  const ipv4Match = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4Match) {
+    const octets = ipv4Match.slice(1).map(Number);
+    if (octets.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return true;
+    return isDisallowedIPv4(h);
+  }
+
+  return false;
+}
+
+function isDisallowedIPv4(ip: string): boolean {
+  const [a, b] = ip.split(".").map(Number);
+
+  // loopback 127.0.0.0/8
+  if (a === 127) return true;
+  // private 10.0.0.0/8
+  if (a === 10) return true;
+  // private 172.16.0.0/12
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  // private 192.168.0.0/16
+  if (a === 192 && b === 168) return true;
+  // link-local 169.254.0.0/16
+  if (a === 169 && b === 254) return true;
+  // unspecified/current network 0.0.0.0/8
+  if (a === 0) return true;
+
+  return false;
+}
+
+function isDisallowedIPv6(ip: string): boolean {
+  const normalized = ip.toLowerCase();
+
+  if (normalized === "::1") return true; // loopback
+  if (normalized === "::") return true; // unspecified
+  if (normalized.startsWith("fe80:")) return true; // link-local fe80::/10
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // unique local fc00::/7
+
+  return false;
+}
 
 async function fetchPdfWithRetry(url: string): Promise<Buffer | null> {
   const headersList: Array<Record<string, string>> = [
