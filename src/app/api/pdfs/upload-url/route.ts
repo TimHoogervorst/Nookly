@@ -61,6 +61,8 @@ const BROWSER_UA =
 
 const CURL_UA = "curl/8.0";
 
+const MAX_REDIRECTS = 5;
+
 function validateAndNormalizeExternalUrl(input: string): string | null {
   let parsed: URL;
   try {
@@ -133,7 +135,46 @@ function isDisallowedIPv6(ip: string): boolean {
   if (normalized.startsWith("fe80:")) return true; // link-local fe80::/10
   if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // unique local fc00::/7
 
+  // IPv4-mapped IPv6 (::ffff:0:0/96) — these encode internal IPv4 addresses
+  // and should never be reachable on the public internet.
+  if (normalized.startsWith("::ffff:")) return true;
+
   return false;
+}
+
+async function fetchWithRedirectValidation(
+  url: string,
+  headers: Record<string, string>,
+): Promise<Response | null> {
+  let currentUrl = url;
+
+  for (let redirectCount = 0; redirectCount < MAX_REDIRECTS; redirectCount++) {
+    const response = await fetch(currentUrl, {
+      headers,
+      redirect: "manual",
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (response.status >= 300 && response.status < 400) {
+      // Release the response body since we won't read it
+      await response.body?.cancel();
+
+      const location = response.headers.get("location");
+      if (!location) return null;
+
+      // Resolve relative redirects against the current URL per WHATWG URL
+      const nextUrl = new URL(location, currentUrl).toString();
+      const validated = validateAndNormalizeExternalUrl(nextUrl);
+      if (!validated) return null; // redirect to internal/invalid host — block
+
+      currentUrl = validated;
+      continue;
+    }
+
+    return response;
+  }
+
+  return null; // too many redirects
 }
 
 async function fetchPdfWithRetry(url: string): Promise<Buffer | null> {
@@ -160,11 +201,8 @@ async function fetchPdfWithRetry(url: string): Promise<Buffer | null> {
 
   for (const headers of headersList) {
     try {
-      const response = await fetch(url, {
-        headers,
-        redirect: "follow",
-        signal: AbortSignal.timeout(30000),
-      });
+      const response = await fetchWithRedirectValidation(url, headers);
+      if (!response) continue; // blocked redirect or too many hops — try next headers
 
       if (response.ok) {
         const buf = Buffer.from(await response.arrayBuffer());
