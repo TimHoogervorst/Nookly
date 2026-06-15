@@ -36,6 +36,8 @@ interface Props {
   pendingHighlight?: { rect: RectAnchor; text: string; color: string } | null;
   onAnchorConsumed?: () => void;
   highlightedCommentId?: number | null;
+  refreshKey?: number;
+  onChange?: () => void;
 }
 
 export default function CommentPanel({
@@ -49,6 +51,8 @@ export default function CommentPanel({
   pendingHighlight,
   onAnchorConsumed,
   highlightedCommentId,
+  refreshKey: externalRefreshKey,
+  onChange,
 }: Props) {
   const targetType = explicitTargetType || "pdf";
   const targetId = explicitTargetId ?? deprecatedPdfId ?? 0;
@@ -61,6 +65,7 @@ export default function CommentPanel({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
   const [tab, setTab] = useState<"comments" | "highlights">("comments");
+  const [refreshKey, setRefreshKey] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const commentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
@@ -106,7 +111,8 @@ export default function CommentPanel({
     }
   }, [targetType, targetId, pageNumber]);
 
-  useEffect(() => { fetchComments(); fetchHighlights(); }, [fetchComments, fetchHighlights, refreshKey]);
+  const refreshTrigger = externalRefreshKey ?? refreshKey;
+  useEffect(() => { fetchComments(); fetchHighlights(); }, [fetchComments, fetchHighlights, refreshTrigger]);
 
   const handleAddComment = async () => {
     if (!newComment.trim()) return;
@@ -134,6 +140,9 @@ export default function CommentPanel({
       });
       if (res.ok) {
         setNewComment("");
+        await fetchComments();
+        onCommentAdded?.();
+        onChange?.();
         onAnchorConsumed?.();
       }
     } catch (err) {
@@ -182,6 +191,7 @@ export default function CommentPanel({
       });
       setEditingId(null);
       await fetchComments();
+      onCommentAdded?.();
       onChange?.();
     } catch (err) {
       console.error("Failed to update comment:", err);
@@ -192,6 +202,7 @@ export default function CommentPanel({
     try {
       await fetch(`/api/comments/${id}`, { method: "DELETE" });
       await fetchComments();
+      onCommentAdded?.();
       onChange?.();
     } catch (err) {
       console.error("Failed to delete comment:", err);
@@ -202,6 +213,7 @@ export default function CommentPanel({
     try {
       await fetch(`/api/highlights/${id}`, { method: "DELETE" });
       await fetchHighlights();
+      onCommentAdded?.();
       onChange?.();
     } catch (err) {
       console.error("Failed to delete highlight:", err);

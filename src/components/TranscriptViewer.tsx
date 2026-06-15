@@ -288,51 +288,64 @@ export default function TranscriptViewer({
             {/* Transcript text with word-level highlights */}
             <p className="px-3 pt-1 text-gray-800 dark:text-gray-200 leading-relaxed select-text">
               {(() => {
-                const words = seg.text.split(/(\s+)/); // split but keep whitespace
-                const wordPositions: { text: string; absIdx: number | null }[] = [];
-                let wordIdx = 0;
-                for (const w of words) {
-                  if (w.trim()) {
-                    wordPositions.push({ text: w, absIdx: segWordStart + wordIdx });
-                    wordIdx++;
-                  } else {
-                    wordPositions.push({ text: w, absIdx: null });
-                  }
-                }
+                // Build full word array for extracting highlight text
+                const allWords = segments
+                  .map((s) => s.text)
+                  .join(" ")
+                  .split(/\s+/)
+                  .filter((w) => w.length > 0);
 
-                // Build a map: absolute word index → set of highlight colors
-                const highlightColors = new Map<number, string[]>();
+                // For each highlight, extract the text it covers, then find + wrap it in the segment
+                const ranges: { start: number; end: number; color: string }[] = [];
                 for (const sh of segHighlights) {
                   if (sh.highlight.start_word == null || sh.highlight.end_word == null) continue;
-                  for (
-                    let pos = Math.max(sh.highlight.start_word, segWordStart);
-                    pos <= Math.min(sh.highlight.end_word, segWordEnd);
-                    pos++
-                  ) {
-                    const colors = highlightColors.get(pos) || [];
-                    colors.push(sh.highlight.color);
-                    highlightColors.set(pos, colors);
+                  const sw = Math.max(sh.highlight.start_word, segWordStart);
+                  const ew = Math.min(sh.highlight.end_word, segWordEnd);
+                  if (sw > ew) continue;
+                  const highlightText = allWords.slice(sw, ew + 1).join(" ");
+                  if (!highlightText) continue;
+                  // Find this text in the segment
+                  const idx = seg.text.indexOf(highlightText);
+                  if (idx >= 0) {
+                    ranges.push({ start: idx, end: idx + highlightText.length, color: sh.highlight.color });
                   }
                 }
 
-                return wordPositions.map((wp, i) => {
-                  const colors = wp.absIdx != null ? highlightColors.get(wp.absIdx) : undefined;
-                  if (colors && colors.length > 0) {
-                    return (
-                      <span
-                        key={i}
-                        style={{
-                          backgroundColor: colors[colors.length - 1] + "44",
-                          borderRadius: "2px",
-                        }}
-                        title="Highlighted"
-                      >
-                        {wp.text}
-                      </span>
-                    );
+                if (ranges.length === 0) return seg.text;
+
+                // Sort ranges and merge overlapping ones
+                ranges.sort((a, b) => a.start - b.start);
+                const merged: typeof ranges = [];
+                for (const r of ranges) {
+                  const last = merged[merged.length - 1];
+                  if (last && r.start <= last.end) {
+                    last.end = Math.max(last.end, r.end);
+                  } else {
+                    merged.push({ ...r });
                   }
-                  return <span key={i}>{wp.text}</span>;
-                });
+                }
+
+                // Build highlighted JSX by slicing the text around ranges
+                const parts: React.ReactNode[] = [];
+                let cursor = 0;
+                for (const r of merged) {
+                  if (r.start > cursor) {
+                    parts.push(<span key={`t-${cursor}`}>{seg.text.slice(cursor, r.start)}</span>);
+                  }
+                  parts.push(
+                    <span
+                      key={`h-${r.start}`}
+                      style={{ backgroundColor: r.color + "44", borderRadius: "2px" }}
+                    >
+                      {seg.text.slice(r.start, r.end)}
+                    </span>
+                  );
+                  cursor = r.end;
+                }
+                if (cursor < seg.text.length) {
+                  parts.push(<span key={`t-${cursor}`}>{seg.text.slice(cursor)}</span>);
+                }
+                return parts;
               })()}
             </p>
 
