@@ -5,7 +5,8 @@ import type { PositionAnchor, TextAnchor, RectAnchor } from "./PDFViewer";
 
 interface Comment {
   id: number;
-  pdf_id: number;
+  target_type: string;
+  target_id: number;
   page_number: number;
   type: "text_anchor" | "position";
   anchor_data: string;
@@ -16,7 +17,8 @@ interface Comment {
 
 interface Highlight {
   id: number;
-  pdf_id: number;
+  target_type: string;
+  target_id: number;
   page_number: number;
   color: string;
   anchor_data: string;
@@ -24,10 +26,12 @@ interface Highlight {
 }
 
 interface Props {
-  pdfId: number;
-  pageNumber: number;
-  refreshKey?: number;
-  onChange?: () => void;
+  targetType?: "pdf" | "recording";
+  targetId?: number;
+  pdfId?: number; // deprecated
+  segmentIndex?: number; // was pageNumber
+  pageNumber?: number; // deprecated
+  onCommentAdded?: () => void;
   pendingAnchor?: { type: "text_anchor" | "position"; data: TextAnchor | PositionAnchor } | null;
   pendingHighlight?: { rect: RectAnchor; text: string; color: string } | null;
   onAnchorConsumed?: () => void;
@@ -35,15 +39,22 @@ interface Props {
 }
 
 export default function CommentPanel({
-  pdfId,
-  pageNumber,
-  refreshKey,
-  onChange,
+  targetType: explicitTargetType,
+  targetId: explicitTargetId,
+  pdfId: deprecatedPdfId,
+  segmentIndex: explicitSegmentIndex,
+  pageNumber: deprecatedPageNumber,
+  onCommentAdded,
   pendingAnchor,
   pendingHighlight,
   onAnchorConsumed,
   highlightedCommentId,
 }: Props) {
+  const targetType = explicitTargetType || "pdf";
+  const targetId = explicitTargetId ?? deprecatedPdfId ?? 0;
+  const pageNumber = explicitSegmentIndex ?? deprecatedPageNumber ?? 1;
+  const locLabel = targetType === "recording" ? "Segment" : "Page";
+  const locLower = targetType === "recording" ? "segment" : "page";
   const [comments, setComments] = useState<Comment[]>([]);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [newComment, setNewComment] = useState("");
@@ -79,38 +90,46 @@ export default function CommentPanel({
 
   const fetchComments = useCallback(async () => {
     try {
-      const res = await fetch(`/api/comments?pdf_id=${pdfId}`);
+      const res = await fetch(`/api/comments?target_type=${targetType}&target_id=${targetId}&page=${pageNumber}`);
       if (res.ok) setComments(await res.json());
     } catch (err) {
       console.error("Failed to fetch comments:", err);
     }
-  }, [pdfId]);
+  }, [targetType, targetId, pageNumber]);
 
   const fetchHighlights = useCallback(async () => {
     try {
-      const res = await fetch(`/api/highlights?pdf_id=${pdfId}`);
+      const res = await fetch(`/api/highlights?target_type=${targetType}&target_id=${targetId}&page=${pageNumber}`);
       if (res.ok) setHighlights(await res.json());
     } catch (err) {
       console.error("Failed to fetch highlights:", err);
     }
-  }, [pdfId]);
+  }, [targetType, targetId, pageNumber]);
 
   useEffect(() => { fetchComments(); fetchHighlights(); }, [fetchComments, fetchHighlights, refreshKey]);
 
   const handleAddComment = async () => {
     if (!newComment.trim()) return;
-    const anchorData = { ...(pendingAnchor?.data || { x: 0.5, y: 0.5 }), page_number: pageNumber };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pendingData = (pendingAnchor?.data || { x: 0.5, y: 0.5 }) as any as Record<string, unknown>;
+    const { startWord: _sw, endWord: _ew, ...cleanData } = pendingData;
+    const anchorData = { ...cleanData, page_number: pageNumber };
     const anchorType = pendingAnchor?.type || "position";
+    const start_word = pendingData.startWord as number | undefined;
+    const end_word = pendingData.endWord as number | undefined;
     try {
       const res = await fetch("/api/comments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pdf_id: pdfId,
+          target_type: targetType,
+          target_id: targetId,
           page_number: pageNumber,
           type: anchorType,
           anchor_data: anchorData,
           content: newComment.trim(),
+          start_word: start_word ?? null,
+          end_word: end_word ?? null,
         }),
       });
       if (res.ok) {
@@ -129,7 +148,8 @@ export default function CommentPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pdf_id: pdfId,
+          target_type: targetType,
+          target_id: targetId,
           page_number: pageNumber,
           color: pendingHighlight.color,
           anchor_data: {
@@ -193,16 +213,7 @@ export default function CommentPanel({
       {/* Header */}
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-3">
-          <h3 className="font-medium text-gray-900 dark:text-gray-100">Page {pageNumber}</h3>
-          <button
-            onClick={() => { fetchComments(); fetchHighlights(); }}
-            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            title="Refresh"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          </button>
+          <h3 className="font-medium text-gray-900 dark:text-gray-100">{locLabel} {pageNumber}</h3>
           <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
             <button
               onClick={() => setTab("comments")}
@@ -239,8 +250,8 @@ export default function CommentPanel({
           <>
             {comments.length === 0 ? (
               <p className="text-center text-gray-400 dark:text-gray-500 text-sm mt-8">
-                No comments on this page.<br />
-                <span className="text-xs">Click on the PDF or select text to comment.</span>
+                No comments on this {locLower}.<br />
+                <span className="text-xs">Click on the document or select text to comment.</span>
               </p>
             ) : (
               comments.map((comment) => (
@@ -291,8 +302,8 @@ export default function CommentPanel({
           <>
             {highlights.length === 0 ? (
               <p className="text-center text-gray-400 dark:text-gray-500 text-sm mt-8">
-                No highlights on this page.<br />
-                <span className="text-xs">Select text on the PDF and click "Highlight".</span>
+                No highlights on this {locLower}.<br />
+                <span className="text-xs">Select text and click &quot;Highlight&quot;.</span>
               </p>
             ) : (
               highlights.map((h) => {
@@ -328,7 +339,7 @@ export default function CommentPanel({
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddComment(); } }}
-            placeholder="Select text or click on the PDF to comment... (Enter to send, Shift+Enter for new line)"
+            placeholder="Select text or click to comment... (Enter to send, Shift+Enter for new line)"
             rows={3}
             className="w-full resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
           />

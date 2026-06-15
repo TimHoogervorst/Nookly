@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import {
   getChunksForPdf,
+  getSegmentsForRecording,
   insertMessage,
   createSession,
   getSetting,
@@ -12,19 +13,40 @@ import { getSkill } from "@/lib/skills";
 export async function POST(request: NextRequest): Promise<Response> {
   try {
     const body = await request.json();
-    const { pdf_id, session_id: existingSessionId, message, skill: skillId, extra } = body;
+    let {
+      target_type,
+      target_id,
+      pdf_id, // deprecated fallback
+      session_id: existingSessionId,
+      message,
+      skill: skillId,
+      extra,
+    } = body;
 
-    if (!pdf_id || !message) {
-      return new Response(JSON.stringify({ error: "pdf_id and message are required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+    // Resolve target: prefer polymorphic, fall back to pdf_id
+    if (!target_type && pdf_id !== undefined) {
+      target_type = "pdf";
+      target_id = pdf_id;
+    }
+
+    if (!target_type || target_id == null || !message) {
+      return new Response(
+        JSON.stringify({ error: "target_type, target_id, and message are required" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!["pdf", "recording"].includes(target_type)) {
+      return new Response(
+        JSON.stringify({ error: 'target_type must be "pdf" or "recording"' }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     // Get or create session
     let sessionId = existingSessionId;
     if (!sessionId) {
-      const session = createSession(pdf_id);
+      const session = createSession(target_type, target_id);
       sessionId = session.id;
     }
 
@@ -33,53 +55,102 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     // ── RAG: Retrieve relevant chunks ──────────────
     let context = "";
-    const allChunks = getChunksForPdf(pdf_id);
-    const embeddedChunks = allChunks.filter((c) => c.embedding);
-    const textChunks = allChunks.filter((c) => !c.embedding);
+    const label = target_type === "recording" ? "Segment" : "Page";
 
-    if (embeddedChunks.length > 0) {
-      // Prefer semantic search with embeddings
-      try {
-        const queryEmbedding = await generateEmbedding(message);
-        const scored = embeddedChunks
-          .map((chunk) => ({
-            ...chunk,
-            score: cosineSimilarity(queryEmbedding, JSON.parse(chunk.embedding!)),
-          }))
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 8);
+    if (target_type === "recording") {
+      // Fetch recording segments instead of PDF chunks
+      const segments = getSegmentsForRecording(target_id);
+      const segmentItems = segments.map((seg) => ({
+        text_content: seg.text,
+        page_number: seg.segment_index,
+        embedding: seg.embedding,
+      }));
 
-        context = buildContext(
-          scored.map((c) => ({ text_content: c.text_content, page_number: c.page_number }))
-        );
-      } catch (err) {
-        console.error("RAG retrieval error:", err);
-        // Fall through to text-only chunks
+      const embeddedItems = segmentItems.filter((c) => c.embedding);
+      const textItems = segmentItems.filter((c) => !c.embedding);
+
+      if (embeddedItems.length > 0) {
+        try {
+          const queryEmbedding = await generateEmbedding(message);
+          const scored = embeddedItems
+            .map((item) => ({
+              ...item,
+              score: cosineSimilarity(queryEmbedding, JSON.parse(item.embedding!)),
+            }))
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 8);
+          context = buildContext(
+            scored.map((c) => ({ text_content: c.text_content, page_number: c.page_number })),
+            4000,
+            label
+          );
+        } catch (err) {
+          console.error("RAG retrieval error:", err);
+        }
       }
-    }
 
-    // Fallback: use text-only chunks (no embeddings yet, or embedding generation failed)
-    if (!context && textChunks.length > 0) {
-      context = buildContext(
-        textChunks
-          .slice(0, 15)
-          .map((c) => ({ text_content: c.text_content, page_number: c.page_number }))
-      );
+      if (!context && textItems.length > 0) {
+        context = buildContext(
+          textItems.slice(0, 15).map((c) => ({
+            text_content: c.text_content,
+            page_number: c.page_number,
+          })),
+          4000,
+          label
+        );
+      }
+    } else {
+      // PDF path (existing logic)
+      const allChunks = getChunksForPdf(target_id);
+      const embeddedChunks = allChunks.filter((c) => c.embedding);
+      const textChunks = allChunks.filter((c) => !c.embedding);
+
+      if (embeddedChunks.length > 0) {
+        try {
+          const queryEmbedding = await generateEmbedding(message);
+          const scored = embeddedChunks
+            .map((chunk) => ({
+              ...chunk,
+              score: cosineSimilarity(queryEmbedding, JSON.parse(chunk.embedding!)),
+            }))
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 8);
+          context = buildContext(
+            scored.map((c) => ({ text_content: c.text_content, page_number: c.page_number }))
+          );
+        } catch (err) {
+          console.error("RAG retrieval error:", err);
+        }
+      }
+
+      if (!context && textChunks.length > 0) {
+        context = buildContext(
+          textChunks
+            .slice(0, 15)
+            .map((c) => ({ text_content: c.text_content, page_number: c.page_number }))
+        );
+      }
     }
 
     // ── Build system prompt ────────────────────────
     const skill = skillId ? getSkill(skillId) : undefined;
+    const docType = target_type === "recording" ? "a voice recording transcript" : "a PDF document";
     let systemPrompt: string;
 
     if (context) {
       if (skill) {
         systemPrompt = skill.systemPrompt(context, extra);
       } else {
-        systemPrompt = `You are a helpful assistant analyzing a PDF document. Use the following PDF content to answer the user's question. Always reference the page numbers shown in [Page N] markers when citing information. If the answer isn't found in the provided content, clearly say so.\n\nPDF Content:\n${context}`;
+        systemPrompt = `You are a helpful assistant analyzing ${docType}. Use the following content to answer the user's question. Always reference the ${label.toLowerCase()} numbers shown in [${label} N] markers when citing information. If the answer isn't found in the provided content, clearly say so.\n\nContent:\n${context}`;
       }
     } else {
-      systemPrompt =
-        "You are a helpful assistant. This PDF is still being processed — its text hasn't been extracted yet. Let the user know the PDF is still processing and they should wait a moment before retrying.";
+      if (target_type === "recording") {
+        systemPrompt =
+          "You are a helpful assistant. This recording is still being transcribed — its text isn't available yet. Let the user know the recording is still processing and they should wait a moment before retrying.";
+      } else {
+        systemPrompt =
+          "You are a helpful assistant. This PDF is still being processed — its text hasn't been extracted yet. Let the user know the PDF is still processing and they should wait a moment before retrying.";
+      }
     }
 
     // ── Get LLM config ─────────────────────────────

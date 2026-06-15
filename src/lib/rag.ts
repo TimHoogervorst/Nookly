@@ -90,11 +90,12 @@ export function cosineSimilarity(a: number[], b: number[]): number {
  */
 export function buildContext(
   chunks: { text_content: string; page_number: number }[],
-  maxLength = 4000
+  maxLength = 4000,
+  label = "Page"
 ): string {
   let context = "";
   for (const chunk of chunks) {
-    const chunkWithPage = `[Page ${chunk.page_number}] ${chunk.text_content}\n\n`;
+    const chunkWithPage = `[${label} ${chunk.page_number}] ${chunk.text_content}\n\n`;
     if (context.length + chunkWithPage.length > maxLength) break;
     context += chunkWithPage;
   }

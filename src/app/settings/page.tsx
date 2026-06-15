@@ -9,6 +9,9 @@ export default function SettingsPage() {
     model: "gpt-3.5-turbo",
     embedding_endpoint: "",
     embedding_model: "text-embedding-ada-002",
+    transcription_endpoint: "",
+    transcription_api_key: "",
+    transcription_model: "whisper-1",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -30,6 +33,9 @@ export default function SettingsPage() {
             ...data,
             // If api_key is masked, keep it empty in the form
             api_key: data.api_key?.startsWith("••••") ? "" : data.api_key || "",
+            transcription_api_key: data.transcription_api_key?.startsWith("••••")
+              ? ""
+              : data.transcription_api_key || "",
           }));
         }
       })
@@ -51,6 +57,12 @@ export default function SettingsPage() {
         toSave.embedding_endpoint = settings.embedding_endpoint;
       if (settings.embedding_model)
         toSave.embedding_model = settings.embedding_model;
+      if (settings.transcription_endpoint)
+        toSave.transcription_endpoint = settings.transcription_endpoint;
+      if (settings.transcription_api_key)
+        toSave.transcription_api_key = settings.transcription_api_key;
+      if (settings.transcription_model)
+        toSave.transcription_model = settings.transcription_model;
 
       const res = await fetch("/api/settings", {
         method: "PUT",
@@ -61,7 +73,7 @@ export default function SettingsPage() {
       if (res.ok) {
         setMessage("Settings saved successfully!");
         // Clear API key field after save for security
-        setSettings((prev) => ({ ...prev, api_key: "" }));
+        setSettings((prev) => ({ ...prev, api_key: "", transcription_api_key: "" }));
       } else {
         const data = await res.json();
         setMessage(`Error: ${data.error}`);
@@ -212,6 +224,75 @@ export default function SettingsPage() {
               placeholder="text-embedding-ada-002"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             />
+          </div>
+        </div>
+
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
+            Transcription (for Voice Recordings)
+          </h2>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Transcription API Endpoint (optional)
+            </label>
+            <input
+              type="url"
+              value={settings.transcription_endpoint}
+              onChange={(e) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  transcription_endpoint: e.target.value,
+                }))
+              }
+              placeholder="Uses chat endpoint by default"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              POST /audio/transcriptions endpoint for Whisper-compatible APIs
+            </p>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Transcription API Key (optional)
+            </label>
+            <input
+              type="password"
+              value={settings.transcription_api_key}
+              onChange={(e) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  transcription_api_key: e.target.value,
+                }))
+              }
+              placeholder="Uses main API key by default"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              Leave blank to use the main API key above
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Transcription Model
+            </label>
+            <input
+              type="text"
+              value={settings.transcription_model}
+              onChange={(e) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  transcription_model: e.target.value,
+                }))
+              }
+              placeholder="whisper-1"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              Model name for the transcription API (e.g., whisper-1, distil-whisper)
+            </p>
           </div>
         </div>
 

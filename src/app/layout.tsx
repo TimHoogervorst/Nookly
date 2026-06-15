@@ -69,6 +69,9 @@ function Header() {
         <Link href="/library" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-gray-600 dark:text-gray-400">
           Library
         </Link>
+        <Link href="/record" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-gray-600 dark:text-gray-400">
+          Record
+        </Link>
         <Link href="/settings" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-gray-600 dark:text-gray-400">
           Settings
         </Link>

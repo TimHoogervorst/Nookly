@@ -4,13 +4,23 @@ import { listSessions, createSession } from "@/lib/db";
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url);
+    let targetType = searchParams.get("target_type");
+    let targetId = searchParams.get("target_id");
     const pdfId = searchParams.get("pdf_id");
 
-    if (!pdfId) {
-      return NextResponse.json({ error: "pdf_id is required" }, { status: 400 });
+    if ((!targetType || !targetId) && pdfId) {
+      targetType = "pdf";
+      targetId = pdfId;
     }
 
-    const sessions = listSessions(parseInt(pdfId));
+    if (!targetType || !targetId) {
+      return NextResponse.json(
+        { error: "target_type and target_id are required (or pdf_id as fallback)" },
+        { status: 400 }
+      );
+    }
+
+    const sessions = listSessions(targetType, parseInt(targetId));
     return NextResponse.json(sessions);
   } catch (error) {
     return NextResponse.json({ error: "Failed to list sessions" }, { status: 500 });
@@ -20,13 +30,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json();
-    const { pdf_id, title } = body;
+    let { target_type, target_id, pdf_id, title } = body;
 
-    if (!pdf_id) {
-      return NextResponse.json({ error: "pdf_id is required" }, { status: 400 });
+    if ((!target_type || target_id == null) && pdf_id !== undefined) {
+      target_type = "pdf";
+      target_id = pdf_id;
     }
 
-    const session = createSession(pdf_id, title);
+    if (!target_type || target_id == null) {
+      return NextResponse.json(
+        { error: "target_type and target_id are required (or pdf_id as fallback)" },
+        { status: 400 }
+      );
+    }
+
+    const session = createSession(target_type, target_id, title);
     return NextResponse.json(session, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: "Failed to create session" }, { status: 500 });

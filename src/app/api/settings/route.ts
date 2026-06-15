@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllSettings, setSetting } from "@/lib/db";
 
-const SENSITIVE_KEYS = ["api_key"];
+const SENSITIVE_KEYS = ["api_key", "transcription_api_key"];
 
 export async function GET(): Promise<NextResponse> {
   try {

@@ -8,7 +8,9 @@ interface Message {
 }
 
 interface Props {
-  pdfId: number;
+  targetType?: "pdf" | "recording";
+  targetId?: number;
+  pdfId?: number; // deprecated — use targetType + targetId
   sessionId: number | null;
   onSessionCreated: (sessionId: number) => void;
   selectionText?: string | null;
@@ -21,7 +23,19 @@ const QUICK_ACTIONS: Record<string, { label: string; message: string }> = {
   quiz: { label: "Quiz me", message: "Quiz me on this document" },
 };
 
-export default function ChatWindow({ pdfId, sessionId, onSessionCreated, selectionText, onSelectionConsumed }: Props) {
+export default function ChatWindow({
+  targetType: explicitTargetType,
+  targetId: explicitTargetId,
+  pdfId: deprecatedPdfId,
+  sessionId,
+  onSessionCreated,
+  selectionText,
+  onSelectionConsumed,
+}: Props) {
+  const targetType = explicitTargetType || "pdf";
+  const targetId = explicitTargetId ?? deprecatedPdfId ?? 0;
+  const docLabel = targetType === "recording" ? "recording" : "PDF";
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -66,7 +80,7 @@ export default function ChatWindow({ pdfId, sessionId, onSessionCreated, selecti
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pdf_id: pdfId, session_id: sessionId, message: text, skill: skill || null }),
+          body: JSON.stringify({ target_type: targetType, target_id: targetId, session_id: sessionId, message: text, skill: skill || null }),
         });
         if (!res.ok) { const err = await res.json(); setStreamContent("Error: " + err.error); return; }
         const reader = res.body?.getReader();
@@ -101,7 +115,7 @@ export default function ChatWindow({ pdfId, sessionId, onSessionCreated, selecti
         streamBufferRef.current = "";
       }
     },
-    [pdfId, sessionId, streaming]
+    [targetType, targetId, sessionId, streaming]
   );
 
   const handleSend = () => sendMessage(input);
@@ -114,8 +128,8 @@ export default function ChatWindow({ pdfId, sessionId, onSessionCreated, selecti
   const handleSelectionAction = (skillId: string) => {
     if (!selectionText) return;
     const prompts: Record<string, string> = {
-      summarize: 'Summarize the following text from the PDF: "' + selectionText + '"',
-      explain: 'Explain the following text from the PDF: "' + selectionText + '"',
+      summarize: `Summarize the following text from the ${docLabel}: "` + selectionText + '"',
+      explain: `Explain the following text from the ${docLabel}: "` + selectionText + '"',
       keypoints: 'Extract the key points from the following text: "' + selectionText + '"',
     };
     sendMessage(prompts[skillId] || 'Regarding this text: "' + selectionText + '"', skillId);
@@ -150,7 +164,7 @@ export default function ChatWindow({ pdfId, sessionId, onSessionCreated, selecti
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
               </svg>
             </div>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">Ask anything about this PDF</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">Ask anything about this {docLabel}</p>
             <p className="text-gray-400 dark:text-gray-500 text-xs">Try a quick action below or type your question</p>
           </div>
         ) : (
@@ -263,7 +277,7 @@ export default function ChatWindow({ pdfId, sessionId, onSessionCreated, selecti
       <div className="p-4 border-t border-gray-200 dark:border-gray-700">
         <div className="flex gap-2">
           <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-            placeholder="Ask a question about this PDF..." rows={2} disabled={streaming}
+            placeholder={`Ask a question about this ${docLabel}...`} rows={2} disabled={streaming}
             className="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-50 dark:disabled:bg-gray-700"
           />
           <button onClick={handleSend} disabled={streaming || !input.trim()}
