@@ -8,8 +8,8 @@ import ChatWindow from "@/components/ChatWindow";
 import CommentPanel from "@/components/CommentPanel";
 
 interface PdfInfo { id: number; original_name: string; page_count: number; }
-interface Comment { id: number; pdf_id: number; page_number: number; type: "text_anchor" | "position"; anchor_data: string; content: string; created_at: string; updated_at: string; }
-interface Highlight { id: number; pdf_id: number; page_number: number; color: string; anchor_data: string; created_at: string; }
+interface Comment { id: number; target_type: string; target_id: number; page_number: number; type: "text_anchor" | "position"; anchor_data: string; content: string; created_at: string; updated_at: string; start_word?: number | null; end_word?: number | null; }
+interface Highlight { id: number; target_type: string; target_id: number; page_number: number; color: string; anchor_data: string; created_at: string; start_word?: number | null; end_word?: number | null; }
 
 type RightPanel = "chat" | "comments";
 
