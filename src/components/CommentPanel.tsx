@@ -11,6 +11,8 @@ interface Comment {
   type: "text_anchor" | "position";
   anchor_data: string;
   content: string;
+  start_word: number | null;
+  end_word: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -22,6 +24,8 @@ interface Highlight {
   page_number: number;
   color: string;
   anchor_data: string;
+  start_word: number | null;
+  end_word: number | null;
   created_at: string;
 }
 
@@ -95,7 +99,14 @@ export default function CommentPanel({
 
   const fetchComments = useCallback(async () => {
     try {
-      const res = await fetch(`/api/comments?target_type=${targetType}&target_id=${targetId}&page=${pageNumber}`);
+      const params = new URLSearchParams({
+        target_type: targetType,
+        target_id: String(targetId),
+      });
+      if (targetType !== "recording" && pageNumber != null) {
+        params.set("page", String(pageNumber));
+      }
+      const res = await fetch(`/api/comments?${params}`);
       if (res.ok) setComments(await res.json());
     } catch (err) {
       console.error("Failed to fetch comments:", err);
@@ -104,7 +115,14 @@ export default function CommentPanel({
 
   const fetchHighlights = useCallback(async () => {
     try {
-      const res = await fetch(`/api/highlights?target_type=${targetType}&target_id=${targetId}&page=${pageNumber}`);
+      const params = new URLSearchParams({
+        target_type: targetType,
+        target_id: String(targetId),
+      });
+      if (targetType !== "recording" && pageNumber != null) {
+        params.set("page", String(pageNumber));
+      }
+      const res = await fetch(`/api/highlights?${params}`);
       if (res.ok) setHighlights(await res.json());
     } catch (err) {
       console.error("Failed to fetch highlights:", err);

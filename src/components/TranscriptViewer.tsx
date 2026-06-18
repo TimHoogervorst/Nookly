@@ -39,9 +39,9 @@ interface Props {
   onSegmentChange: (segmentIndex: number) => void;
   onSeek: (time: number) => void;
   /** Called when user clicks Highlight in the selection popup */
-  onHighlightText?: (text: string, segmentIndex: number) => void;
+  onHighlightText?: (text: string, segmentIndex: number, charOffset: number) => void;
   /** Called when user clicks Comment in the selection popup */
-  onCommentText?: (text: string, segmentIndex: number) => void;
+  onCommentText?: (text: string, segmentIndex: number, charOffset: number) => void;
   /** Called when user clicks Send to Chat in the selection popup */
   onSendToChat?: (text: string) => void;
   /** Pre-computed amplitude array for inline waveform strips */
@@ -62,6 +62,55 @@ function formatTimestamp(seconds: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+/**
+ * Compute the character offset of a Text node within a root element
+ * by walking all descendant Text nodes in DOM order.
+ */
+function getTextOffsetInElement(root: HTMLElement, targetNode: Text, offsetInNode: number): number {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let totalOffset = 0;
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    if (node === targetNode) {
+      return totalOffset + offsetInNode;
+    }
+    totalOffset += (node as Text).length;
+  }
+  // Fallback: target node not found within root
+  return totalOffset + offsetInNode;
+}
+
+/**
+ * Anchor resolver for transcript text selections.
+ * Returns the segment index and the character offset of the selection start
+ * within the segment's paragraph text. The character offset disambiguates
+ * which occurrence of a word was selected when the same word appears
+ * multiple times in one segment.
+ *
+ * Handles Text node common ancestors by walking up to the parent element
+ * first — Text nodes lack .closest(), which would otherwise break selection
+ * detection for virtually all text selections inside paragraph text.
+ */
+export function getTranscriptAnchor({ range }: SelectionContext): { segmentIndex: number; charOffset: number } | null {
+  const ancestor = range.commonAncestorContainer;
+  const ancestorEl =
+    ancestor.nodeType === Node.TEXT_NODE
+      ? ancestor.parentElement!
+      : (ancestor as Element);
+  const segEl = ancestorEl?.closest?.("[data-segment]") as HTMLElement | null;
+  if (!segEl) return null;
+
+  // Find the paragraph element containing the transcript text
+  const p = segEl.querySelector("p");
+  const startContainer = range.startContainer as Text;
+  const startOffset = range.startOffset;
+  const charOffset = p
+    ? getTextOffsetInElement(p, startContainer, startOffset)
+    : 0;
+
+  return { segmentIndex: parseInt(segEl.dataset.segment || "0"), charOffset };
+}
+
 export default function TranscriptViewer({
   segments,
   currentTime,
@@ -80,15 +129,8 @@ export default function TranscriptViewer({
   const [activeSegment, setActiveSegment] = useState<number | null>(null);
 
   // Selection popup (shared hook with PDFViewer)
-  const { popup: selPopup, containerRef, dismiss: dismissSelPopup } = useTextSelectionPopup(
-    ({ range }: SelectionContext) => {
-      const segEl = (range.commonAncestorContainer as Element).closest?.(
-        "[data-segment]"
-      ) as HTMLElement | null;
-      if (!segEl) return null;
-      return { segmentIndex: parseInt(segEl.dataset.segment || "0") };
-    }
-  );
+  const { popup: selPopup, containerRef, dismiss: dismissSelPopup } =
+    useTextSelectionPopup(getTranscriptAnchor);
 
   const hasCallbacks = !!(onHighlightText || onCommentText || onSendToChat);
 
@@ -163,13 +205,14 @@ export default function TranscriptViewer({
           .reduce((sum, s) => sum + s.text.split(/\s+/).filter((w) => w.length > 0).length, 0);
         const segWordEnd = segWordStart + segWordCount - 1;
 
-        // Find comments that start in this segment's word range
+        // Find comments that overlap this segment's word range
         const segComments = comments.filter((c) => {
-          if (c.start_word == null) {
+          if (c.start_word == null || c.end_word == null) {
             // Fallback: old data without word positions
             return c.page_number === seg.segment_index;
           }
-          return c.start_word >= segWordStart && c.start_word <= segWordEnd;
+          // Overlap check — comment shows on every segment it touches
+          return c.start_word <= segWordEnd && c.end_word >= segWordStart;
         });
 
         // Find highlights that overlap this segment's word range (may be partial)
@@ -180,19 +223,17 @@ export default function TranscriptViewer({
           // Overlap check
           return h.start_word <= segWordEnd && h.end_word >= segWordStart;
         }).map((h) => {
-          if (h.start_word == null || h.end_word == null) return { highlight: h, ratio: 1, partial: false };
+          if (h.start_word == null || h.end_word == null) return { highlight: h, ratio: 1 };
           const sw = h.start_word!;
           const ew = h.end_word!;
-          // Compute overlap ratio within this segment
+          // Compute overlap ratio within this segment (for word-range clipping)
           const overlapStart = Math.max(sw, segWordStart);
           const overlapEnd = Math.min(ew, segWordEnd);
           const overlapWords = overlapEnd - overlapStart + 1;
           const totalWords = ew - sw + 1;
-          const partial = sw < segWordStart || ew > segWordEnd;
           return {
             highlight: h,
             ratio: totalWords > 0 ? overlapWords / totalWords : 0,
-            partial,
           };
         });
         const progressRatio =
@@ -237,27 +278,35 @@ export default function TranscriptViewer({
             {/* Transcript text with word-level highlights */}
             <p className="px-3 pt-1 text-gray-800 dark:text-gray-200 leading-relaxed select-text">
               {(() => {
-                // Build full word array for extracting highlight text
-                const allWords = segments
-                  .map((s) => s.text)
-                  .join(" ")
-                  .split(/\s+/)
-                  .filter((w) => w.length > 0);
+                // Build a map from relative word index → character offset within seg.text
+                const wordCharStarts: number[] = [];
+                const wordCharEnds: number[] = [];
+                const wordRegex = /\S+/g;
+                let m: RegExpExecArray | null;
+                while ((m = wordRegex.exec(seg.text)) !== null) {
+                  wordCharStarts.push(m.index);
+                  wordCharEnds.push(m.index + m[0].length);
+                }
 
-                // For each highlight, extract the text it covers, then find + wrap it in the segment
+                // For each highlight, compute the character range from word positions
                 const ranges: { start: number; end: number; color: string }[] = [];
                 for (const sh of segHighlights) {
                   if (sh.highlight.start_word == null || sh.highlight.end_word == null) continue;
                   const sw = Math.max(sh.highlight.start_word, segWordStart);
                   const ew = Math.min(sh.highlight.end_word, segWordEnd);
                   if (sw > ew) continue;
-                  const highlightText = allWords.slice(sw, ew + 1).join(" ");
-                  if (!highlightText) continue;
-                  // Find this text in the segment
-                  const idx = seg.text.indexOf(highlightText);
-                  if (idx >= 0) {
-                    ranges.push({ start: idx, end: idx + highlightText.length, color: sh.highlight.color });
-                  }
+                  const relativeStart = sw - segWordStart;
+                  const relativeEnd = ew - segWordStart;
+                  if (
+                    relativeStart < 0 ||
+                    relativeEnd >= wordCharStarts.length ||
+                    relativeStart > relativeEnd
+                  ) continue;
+                  ranges.push({
+                    start: wordCharStarts[relativeStart],
+                    end: wordCharEnds[relativeEnd],
+                    color: sh.highlight.color,
+                  });
                 }
 
                 if (ranges.length === 0) return seg.text;
@@ -336,7 +385,7 @@ export default function TranscriptViewer({
                     key={sh.highlight.id}
                     className="w-3 h-3 rounded-full border border-white dark:border-gray-800"
                     style={{ backgroundColor: sh.highlight.color }}
-                    title={`Highlight${sh.partial ? " (continued)" : ""}`}
+                    title="Highlight"
                   />
                 ))}
               </div>
@@ -401,7 +450,7 @@ export default function TranscriptViewer({
           {onHighlightText && (
             <button
               onClick={() => {
-                onHighlightText(selPopup.text, selPopup.segmentIndex);
+                onHighlightText(selPopup.text, selPopup.segmentIndex, selPopup.charOffset);
                 dismissSelPopup();
                 window.getSelection()?.removeAllRanges();
               }}
@@ -420,7 +469,7 @@ export default function TranscriptViewer({
           {onCommentText && (
             <button
               onClick={() => {
-                onCommentText(selPopup.text, selPopup.segmentIndex);
+                onCommentText(selPopup.text, selPopup.segmentIndex, selPopup.charOffset);
                 dismissSelPopup();
                 window.getSelection()?.removeAllRanges();
               }}

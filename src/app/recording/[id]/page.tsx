@@ -178,54 +178,13 @@ export default function RecordingViewerPage() {
     }
   }, [recordingId]);
 
-  // Find which segment contains the given anchor text
-  const remapToSegment = useCallback(
-    (text: string): number => {
-      if (!text || segments.length === 0) return 0;
-      // Strip punctuation and lowercase for fuzzy matching
-      const clean = text.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
-      const words = clean.split(" ").filter((w) => w.length > 1);
-
-      let bestIdx = 0;
-      let bestScore = 0;
-
-      for (const seg of segments) {
-        const segClean = seg.text.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
-        // Check for substring match (either direction)
-        if (segClean.includes(clean) || clean.includes(segClean.slice(0, clean.length + 20))) {
-          return seg.segment_index; // exact match, use immediately
-        }
-        // Word overlap score
-        const segWords = new Set(segClean.split(" "));
-        const overlap = words.filter((w) => segWords.has(w)).length;
-        if (overlap > bestScore) {
-          bestScore = overlap;
-          bestIdx = seg.segment_index;
-        }
-      }
-
-      return bestIdx;
-    },
-    [segments]
-  );
-
-  // Refresh comments & highlights (with remapping built in)
+  // Refresh comments & highlights
   const refreshData = useCallback(() => {
     fetch(`/api/comments?target_type=recording&target_id=${recordingId}`)
       .then((r) => r.json())
       .then((d) => {
         if (!d.error && Array.isArray(d)) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          setAllComments(
-            d.map((c: any) => {
-              try {
-                const anchor = JSON.parse(c.anchor_data);
-                return { ...c, page_number: remapToSegment(anchor.text || "") };
-              } catch {
-                return c;
-              }
-            })
-          );
+          setAllComments(d);
         }
       })
       .catch(() => {});
@@ -233,21 +192,11 @@ export default function RecordingViewerPage() {
       .then((r) => r.json())
       .then((d) => {
         if (!d.error && Array.isArray(d)) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          setAllHighlights(
-            d.map((h: any) => {
-              try {
-                const anchor = JSON.parse(h.anchor_data);
-                return { ...h, page_number: remapToSegment(anchor.text || "") };
-              } catch {
-                return h;
-              }
-            })
-          );
+          setAllHighlights(d);
         }
       })
       .catch(() => {});
-  }, [recordingId, remapToSegment]);
+  }, [recordingId]);
 
   useEffect(() => {
     refreshData();
@@ -319,52 +268,61 @@ export default function RecordingViewerPage() {
 
   // ── Word position helpers ──
 
-  // Full transcript as word array (concat all segment texts)
-  const fullWords = segments
-    .map((s) => s.text)
-    .join(" ")
-    .split(/\s+/)
-    .filter((w) => w.length > 0);
-
-  const findWordPosition = useCallback(
-    (text: string): { startWord: number; endWord: number } | null => {
-      if (!text || fullWords.length === 0) return null;
-      const targetWords = text.split(/\s+/).filter((w) => w.length > 0);
-      if (targetWords.length === 0) return null;
-
-      // Search for the sequence of words in the full text
-      for (let i = 0; i <= fullWords.length - targetWords.length; i++) {
-        let match = true;
-        for (let j = 0; j < targetWords.length; j++) {
-          if (
-            fullWords[i + j].toLowerCase().replace(/[^a-z0-9]/g, "") !==
-            targetWords[j].toLowerCase().replace(/[^a-z0-9]/g, "")
-          ) {
-            match = false;
-            break;
-          }
-        }
-        if (match) {
-          return { startWord: i, endWord: i + targetWords.length - 1 };
-        }
-      }
-      // Partial match: find best overlap
-      const firstWord = targetWords[0].toLowerCase().replace(/[^a-z0-9]/g, "");
-      for (let i = 0; i < fullWords.length; i++) {
-        if (fullWords[i].toLowerCase().replace(/[^a-z0-9]/g, "") === firstWord) {
-          return { startWord: i, endWord: i + targetWords.length - 1 };
-        }
-      }
-      return null;
+  /** Compute the global word range of the segment at the given index. */
+  const getSegmentWordRange = useCallback(
+    (segmentIndex: number): { startWord: number; endWord: number } | null => {
+      const seg = segments[segmentIndex];
+      if (!seg) return null;
+      const segWordStart = segments
+        .slice(0, segmentIndex)
+        .reduce((sum, s) => sum + s.text.split(/\s+/).filter((w) => w.length > 0).length, 0);
+      const segWordCount = seg.text.split(/\s+/).filter((w) => w.length > 0).length;
+      return { startWord: segWordStart, endWord: segWordStart + segWordCount - 1 };
     },
-    [fullWords]
+    [segments]
+  );
+
+  /**
+   * Map a character offset within a segment's text to a 0-based word index
+   * within that segment. Returns null if the offset falls in whitespace or
+   * is out of range.
+   */
+  const charOffsetToSegmentWordIndex = useCallback(
+    (segmentIndex: number, charOffset: number): number | null => {
+      const seg = segments[segmentIndex];
+      if (!seg || charOffset < 0 || charOffset >= seg.text.length) return null;
+      // Count words up to the character offset by scanning
+      let wordIdx = 0;
+      let inWord = false;
+      for (let i = 0; i <= charOffset && i < seg.text.length; i++) {
+        const isWordChar = /\S/.test(seg.text[i]);
+        if (isWordChar && !inWord) {
+          inWord = true;
+          wordIdx++;
+        } else if (!isWordChar) {
+          inWord = false;
+        }
+      }
+      // If the offset is in whitespace, the selection start is not on a word
+      if (!inWord) return null;
+      return wordIdx - 1; // 0-based
+    },
+    [segments]
   );
 
   // ── Selection popup handlers (PDFViewer pattern) ──
 
   const handleHighlightText = useCallback(
-    async (text: string, segmentIndex: number) => {
-      const pos = findWordPosition(text);
+    async (text: string, segmentIndex: number, charOffset: number) => {
+      const segRange = getSegmentWordRange(segmentIndex);
+      const relativeIdx = charOffsetToSegmentWordIndex(segmentIndex, charOffset);
+      const startWord =
+        relativeIdx !== null && segRange !== null
+          ? segRange.startWord + relativeIdx
+          : undefined;
+      const targetWordCount = text.split(/\s+/).filter((w) => w.length > 0).length;
+      const endWord =
+        startWord !== undefined ? startWord + targetWordCount - 1 : undefined;
       try {
         await fetch("/api/highlights", {
           method: "POST",
@@ -374,8 +332,8 @@ export default function RecordingViewerPage() {
             target_id: recordingId,
             page_number: segmentIndex,
             color: "#fef08a",
-            start_word: pos?.startWord,
-            end_word: pos?.endWord,
+            start_word: startWord,
+            end_word: endWord,
             anchor_data: {
               rect: { left: 0, top: 0, right: 0, bottom: 0 },
               text,
@@ -388,27 +346,35 @@ export default function RecordingViewerPage() {
         console.error("Failed to create highlight:", err);
       }
     },
-    [recordingId, refreshData, findWordPosition]
+    [recordingId, refreshData, getSegmentWordRange, charOffsetToSegmentWordIndex]
   );
 
   const handleCommentText = useCallback(
-    (text: string, segmentIndex: number) => {
-      const pos = findWordPosition(text);
+    (text: string, segmentIndex: number, charOffset: number) => {
+      const segRange = getSegmentWordRange(segmentIndex);
+      const relativeIdx = charOffsetToSegmentWordIndex(segmentIndex, charOffset);
+      const startWord =
+        relativeIdx !== null && segRange !== null
+          ? segRange.startWord + relativeIdx
+          : undefined;
+      const targetWordCount = text.split(/\s+/).filter((w) => w.length > 0).length;
+      const endWord =
+        startWord !== undefined ? startWord + targetWordCount - 1 : undefined;
       setPendingAnchor({
         type: "text_anchor",
         data: {
           text,
           rect: { left: 0, top: 0, right: 0, bottom: 0 },
           pageNumber: segmentIndex,
-          startWord: pos?.startWord,
-          endWord: pos?.endWord,
+          startWord,
+          endWord,
         } as TextAnchor & { startWord?: number; endWord?: number },
       });
       setCurrentSegment(segmentIndex);
       setRightPanel("comments");
       setSidebarOpen(true);
     },
-    [findWordPosition]
+    [getSegmentWordRange, charOffsetToSegmentWordIndex]
   );
 
   const handleSendToChat = useCallback((text: string) => {

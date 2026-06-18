@@ -19,6 +19,69 @@ export interface PositionAnchor { x: number; y: number; }
 export interface RectAnchor { left: number; top: number; right: number; bottom: number; }
 export interface TextAnchor { text: string; rect: RectAnchor; rects?: RectAnchor[]; pageNumber?: number; }
 
+/**
+ * Anchor resolver for PDF text selections.
+ *
+ * Walks up from the selection common ancestor to find the containing page,
+ * then computes normalized rects from the selection's client rects.
+ *
+ * Filters out zero-width rects (right − left ≈ 0) that react-pdf's
+ * absolutely-positioned text layer spans can produce — without this filter,
+ * those rects become ghost highlight/comment bars at the left page edge.
+ */
+export function getPDFAnchor({ text, range }: SelectionContext): TextAnchor | null {
+  const ancestor = range.commonAncestorContainer;
+  const ancestorEl =
+    ancestor.nodeType === Node.TEXT_NODE
+      ? ancestor.parentElement!
+      : (ancestor as Element);
+  const pageEl = ancestorEl?.closest?.(".react-pdf__Page");
+  if (!pageEl) return null;
+  const pageWrapper = pageEl.closest("[data-page]") as HTMLElement | null;
+  if (!pageWrapper) return null;
+  const pageNum = parseInt(pageWrapper.dataset.page || "1");
+  const dw = pageWrapper.getBoundingClientRect();
+  const sr = range.getBoundingClientRect();
+
+  // Filter zero-width rects — react-pdf's absolutely-positioned text layer
+  // spans can produce spurious zero-width DOMRect objects on every page.
+  const clientRects = Array.from(range.getClientRects()).filter(
+    (r) => r.right - r.left > 0.5
+  );
+
+  // Merge rects on the same visual line to avoid fragment overlaps
+  const lines: DOMRect[][] = [];
+  for (const cr of clientRects) {
+    const line = lines.find((l) => Math.abs(l[0].top - cr.top) < 3);
+    if (line) line.push(cr);
+    else lines.push([cr]);
+  }
+
+  const rects: RectAnchor[] = lines.map((line) => {
+    const l = Math.min(...line.map((r) => r.left));
+    const r = Math.max(...line.map((r) => r.right));
+    const t = Math.min(...line.map((r) => r.top));
+    const b = Math.max(...line.map((r) => r.bottom));
+    return {
+      left: (l - dw.left) / dw.width,
+      top: (t - dw.top) / dw.height,
+      right: (r - dw.left) / dw.width,
+      bottom: (b - dw.top) / dw.height,
+    };
+  });
+  return {
+    text,
+    rect: {
+      left: (sr.left - dw.left) / dw.width,
+      top: (sr.top - dw.top) / dw.height,
+      right: (sr.right - dw.left) / dw.width,
+      bottom: (sr.bottom - dw.top) / dw.height,
+    },
+    rects,
+    pageNumber: pageNum,
+  };
+}
+
 interface CommentMarker {
   id: number; page_number: number; type: "text_anchor" | "position";
   anchor_data: string; content?: string;
@@ -65,49 +128,8 @@ export default function PDFViewer({
   }, [scale]);
 
   // ── Selection popup ───────────────────────────
-  const { popup: selPopup, containerRef, dismiss: dismissSelPopup } = useTextSelectionPopup(
-    ({ range }: SelectionContext) => {
-      const ancestor = range.commonAncestorContainer;
-      const ancestorEl = ancestor.nodeType === Node.TEXT_NODE ? ancestor.parentElement! : (ancestor as Element);
-      const pageEl = ancestorEl?.closest?.(".react-pdf__Page");
-      if (!pageEl) return null;
-      const pageWrapper = pageEl.closest("[data-page]") as HTMLElement | null;
-      if (!pageWrapper) return null;
-      const pageNum = parseInt(pageWrapper.dataset.page || "1");
-      const dw = pageWrapper.getBoundingClientRect();
-      const sr = range.getBoundingClientRect();
-      const clientRects = Array.from(range.getClientRects());
-
-      // Merge rects on the same visual line to avoid fragment overlaps
-      const lines: DOMRect[][] = [];
-      for (const cr of clientRects) {
-        const line = lines.find(l => Math.abs(l[0].top - cr.top) < 3);
-        if (line) line.push(cr);
-        else lines.push([cr]);
-      }
-
-      const rects: RectAnchor[] = lines.map(line => {
-        const l = Math.min(...line.map(r => r.left));
-        const r = Math.max(...line.map(r => r.right));
-        const t = Math.min(...line.map(r => r.top));
-        const b = Math.max(...line.map(r => r.bottom));
-        return {
-          left: (l - dw.left) / dw.width,
-          top: (t - dw.top) / dw.height,
-          right: (r - dw.left) / dw.width,
-          bottom: (b - dw.top) / dw.height,
-        };
-      });
-      return {
-        rect: {
-          left: (sr.left - dw.left) / dw.width, top: (sr.top - dw.top) / dw.height,
-          right: (sr.right - dw.left) / dw.width, bottom: (sr.bottom - dw.top) / dw.height,
-        },
-        rects,
-        pageNumber: pageNum,
-      };
-    }
-  );
+  const { popup: selPopup, containerRef, dismiss: dismissSelPopup } =
+    useTextSelectionPopup(getPDFAnchor);
 
   // ── Highlight click popup (rendered at body level) ──
   const [hlPopup, setHlPopup] = useState<{ x: number; y: number; highlightId: number; color: string } | null>(null);
