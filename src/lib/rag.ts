@@ -30,20 +30,46 @@ export function splitIntoChunks(text: string, chunkSize = DEFAULT_CHUNK_SIZE): s
 }
 
 /**
+ * Derive the embedding endpoint URL from the chat completions endpoint.
+ *
+ * e.g. https://api.openai.com/v1/chat/completions → https://api.openai.com/v1/embeddings
+ *
+ * Strips /chat/completions (and any orphan trailing slash) before appending /embeddings
+ * so the result never contains a double slash.
+ */
+export function deriveEmbeddingUrl(chatEndpoint: string): string {
+  const baseUrl = chatEndpoint
+    .replace(/\/+$/, "")
+    .replace(/\/chat\/completions$/, "")
+    .replace(/\/+$/, ""); // strip trailing slash left by the regex above
+  return `${baseUrl}/embeddings`;
+}
+
+/**
  * Generate an embedding for the given text using the configured LLM endpoint.
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
-  const endpoint = getSetting("embedding_endpoint") || getSetting("endpoint");
   const apiKey = getSetting("api_key");
   const model = getSetting("embedding_model") || "text-embedding-ada-002";
 
-  if (!endpoint || !apiKey) {
-    throw new Error("LLM endpoint and API key must be configured in Settings.");
+  if (!apiKey) {
+    throw new Error("API key must be configured in Settings.");
   }
 
-  // Normalize endpoint: use /embeddings path
-  const baseUrl = endpoint.replace(/\/+$/, "").replace(/\/chat\/completions$/, "");
-  const embeddingUrl = `${baseUrl}/embeddings`;
+  // Resolve the embedding URL:
+  // 1. If embedding_endpoint is explicitly set, use it as the full URL as-is.
+  // 2. Otherwise, derive from the chat endpoint.
+  const explicitEmbeddingUrl = getSetting("embedding_endpoint");
+  let embeddingUrl: string;
+  if (explicitEmbeddingUrl) {
+    embeddingUrl = explicitEmbeddingUrl;
+  } else {
+    const chatEndpoint = getSetting("endpoint");
+    if (!chatEndpoint) {
+      throw new Error("LLM endpoint must be configured in Settings.");
+    }
+    embeddingUrl = deriveEmbeddingUrl(chatEndpoint);
+  }
 
   const response = await fetch(embeddingUrl, {
     method: "POST",
@@ -59,7 +85,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Embedding API error (${response.status}): ${errorText}`);
+    throw new Error(
+      `Embedding API error (${response.status}) at ${embeddingUrl}: ${errorText || "(empty body)"}`
+    );
   }
 
   const data = await response.json();

@@ -200,11 +200,11 @@ export default function SettingsPage() {
                   embedding_endpoint: e.target.value,
                 }))
               }
-              placeholder="Uses chat endpoint by default"
+              placeholder="e.g. https://api.openai.com/v1/embeddings"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             />
             <p className="text-xs text-gray-400 mt-1">
-              Only needed if embeddings use a different base URL than chat
+              Full embedding URL. If empty, derived from the chat endpoint above.
             </p>
           </div>
 

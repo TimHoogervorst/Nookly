@@ -86,6 +86,8 @@ async function processPdfInBackground(pdfId: number, buffer: Uint8Array): Promis
     }
 
     // Process each page
+    let embeddingsSucceeded = 0;
+    let embeddingsFailed = 0;
     for (let i = 0; i < pageTexts.length; i++) {
       const pageNum = i + 1;
       const chunks = splitIntoChunks(pageTexts[i]);
@@ -95,15 +97,27 @@ async function processPdfInBackground(pdfId: number, buffer: Uint8Array): Promis
         try {
           const embedding = await generateEmbedding(chunkText);
           insertChunk(pdfId, pageNum, j, chunkText, embedding);
+          embeddingsSucceeded++;
         } catch (err) {
           // Save without embedding if generation fails
           console.error(`Embedding failed for chunk ${j} on page ${pageNum}:`, err);
           insertChunk(pdfId, pageNum, j, chunkText);
+          embeddingsFailed++;
         }
       }
     }
 
-    console.log(`Processed PDF ${pdfId}: ${pageCount} pages, embeddings generated`);
+    if (embeddingsFailed > 0 && embeddingsSucceeded === 0) {
+      console.log(
+        `Processed PDF ${pdfId}: ${pageCount} pages, ${embeddingsFailed} embeddings failed (check embedding endpoint in Settings)`
+      );
+    } else if (embeddingsFailed > 0) {
+      console.log(
+        `Processed PDF ${pdfId}: ${pageCount} pages, ${embeddingsSucceeded} embeddings OK, ${embeddingsFailed} failed`
+      );
+    } else {
+      console.log(`Processed PDF ${pdfId}: ${pageCount} pages, ${embeddingsSucceeded} embeddings generated`);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : "";

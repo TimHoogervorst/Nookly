@@ -1,6 +1,25 @@
 import path from "path";
+import { pathToFileURL } from "url";
 import fs from "fs/promises";
 import * as pdfjsLib from "pdfjs-dist";
+
+// In Node.js, pdfjs-dist defaults workerSrc to "./pdf.worker.mjs" (relative).
+// In Next.js bundled output, that relative path resolves against the chunk file in
+// .next/server/chunks/, where the worker doesn't exist — Turbopack rewrites the
+// internal dynamic import despite the webpackIgnore:true comment.
+//
+// Point workerSrc at the actual node_modules file so the runtime import succeeds.
+// On Windows, absolute paths must be file:// URLs for the ESM loader.
+// This must execute before any pdfjs-dist API calls (getDocument, etc.).
+pdfjsLib.GlobalWorkerOptions.workerSrc = pathToFileURL(
+  path.join(
+    process.cwd(),
+    "node_modules",
+    "pdfjs-dist",
+    "build",
+    "pdf.worker.mjs",
+  ),
+).href;
 
 const PDFS_DIR = path.join(process.cwd(), "data", "pdfs");
 

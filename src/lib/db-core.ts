@@ -163,9 +163,10 @@ function initSchema(database: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_pdf_chunks_pdf_id ON pdf_chunks(pdf_id);
-    CREATE INDEX IF NOT EXISTS idx_comments_target ON comments(target_type, target_id);
-    CREATE INDEX IF NOT EXISTS idx_highlights_target ON highlights(target_type, target_id);
-    CREATE INDEX IF NOT EXISTS idx_chat_sessions_target ON chat_sessions(target_type, target_id);
+    -- idx_comments_target, idx_highlights_target, and idx_chat_sessions_target
+    -- reference migrated columns (target_type, target_id) and are created by
+    -- the migration blocks below. Creating them here would fail against
+    -- old-schema tables that lack those columns.
     CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id);
     CREATE INDEX IF NOT EXISTS idx_pdf_tags_pdf_id ON pdf_tags(pdf_id);
     CREATE INDEX IF NOT EXISTS idx_pdf_tags_tag_id ON pdf_tags(tag_id);
@@ -185,9 +186,14 @@ function initSchema(database: Database.Database): void {
   try { database.exec("ALTER TABLE comments ADD COLUMN end_word INTEGER"); } catch {}
 
   // Migration: polymorphic refactor — comments
+  // Check for old schema (has pdf_id column) rather than new schema
+  // (has target_type), because "new schema missing" could also mean the
+  // table doesn't exist at all — and we'd fail on ALTER TABLE RENAME.
   try {
-    database.exec("SELECT target_type FROM comments LIMIT 1");
-  } catch {
+    database.exec("SELECT pdf_id FROM comments LIMIT 1");
+    // Old schema detected — migrate inside a transaction so partial
+    // failures don't leave the database in a broken intermediate state.
+    database.exec("BEGIN");
     database.exec(`
       ALTER TABLE comments RENAME TO comments_old;
       CREATE TABLE comments (
@@ -206,12 +212,19 @@ function initSchema(database: Database.Database): void {
       DROP TABLE comments_old;
       CREATE INDEX IF NOT EXISTS idx_comments_target ON comments(target_type, target_id);
     `);
+    database.exec("COMMIT");
+  } catch {
+    // Table doesn't exist, or already migrated, or migration failed.
+    // If migration was attempted and failed, ROLLBACK undoes any partial
+    // changes. The CREATE TABLE IF NOT EXISTS at the top of initSchema
+    // ensures the new table will exist regardless.
+    try { database.exec("ROLLBACK"); } catch {}
   }
 
   // Migration: polymorphic refactor — highlights
   try {
-    database.exec("SELECT target_type FROM highlights LIMIT 1");
-  } catch {
+    database.exec("SELECT pdf_id FROM highlights LIMIT 1");
+    database.exec("BEGIN");
     database.exec(`
       ALTER TABLE highlights RENAME TO highlights_old;
       CREATE TABLE highlights (
@@ -228,12 +241,15 @@ function initSchema(database: Database.Database): void {
       DROP TABLE highlights_old;
       CREATE INDEX IF NOT EXISTS idx_highlights_target ON highlights(target_type, target_id);
     `);
+    database.exec("COMMIT");
+  } catch {
+    try { database.exec("ROLLBACK"); } catch {}
   }
 
   // Migration: polymorphic refactor — chat_sessions
   try {
-    database.exec("SELECT target_type FROM chat_sessions LIMIT 1");
-  } catch {
+    database.exec("SELECT pdf_id FROM chat_sessions LIMIT 1");
+    database.exec("BEGIN");
     database.exec(`
       ALTER TABLE chat_sessions RENAME TO chat_sessions_old;
       CREATE TABLE chat_sessions (
@@ -248,6 +264,9 @@ function initSchema(database: Database.Database): void {
       DROP TABLE chat_sessions_old;
       CREATE INDEX IF NOT EXISTS idx_chat_sessions_target ON chat_sessions(target_type, target_id);
     `);
+    database.exec("COMMIT");
+  } catch {
+    try { database.exec("ROLLBACK"); } catch {}
   }
 }
 
