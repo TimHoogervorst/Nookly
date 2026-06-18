@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { countUsers, createUser, createUserSession, seedAdminUser } from "@/lib/db";
+import { countUsers, createUser, createUserSession, seedAdminUser } from "@/lib/users";
 import { hashPassword } from "@/lib/auth";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

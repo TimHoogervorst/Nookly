@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTagsForPdf, setPdfTags } from "@/lib/db";
+import { getTagsForPdf, setPdfTags } from "@/lib/tags";
 
 export async function GET(
   _request: NextRequest,

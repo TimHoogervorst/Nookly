@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { touchPdf } from "@/lib/db";
+import { touchPdf } from "@/lib/pdfs";
 
 export async function POST(
   _request: NextRequest,

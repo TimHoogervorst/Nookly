@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { toggleFavorite } from "@/lib/db";
+import { toggleFavorite } from "@/lib/pdfs";
 
 export async function PUT(
   _request: NextRequest,

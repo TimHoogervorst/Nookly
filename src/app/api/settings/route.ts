@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllSettings, setSetting } from "@/lib/db";
+import { getAllSettings, setSetting } from "@/lib/users";
 
 const SENSITIVE_KEYS = ["api_key", "transcription_api_key"];
 

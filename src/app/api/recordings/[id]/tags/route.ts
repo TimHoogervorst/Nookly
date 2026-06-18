@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTagsForRecording, setRecordingTags } from "@/lib/db";
+import { getTagsForRecording, setRecordingTags } from "@/lib/tags";
 
 export async function GET(
   _request: NextRequest,

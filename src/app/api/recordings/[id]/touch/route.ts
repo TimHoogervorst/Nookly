@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { touchRecording } from "@/lib/db";
+import { touchRecording } from "@/lib/recordings";
 
 export async function POST(
   _request: NextRequest,

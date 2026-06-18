@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateComment, deleteComment } from "@/lib/db";
+import { updateComment, deleteComment } from "@/lib/annotations";
 
 export async function PUT(
   request: NextRequest,

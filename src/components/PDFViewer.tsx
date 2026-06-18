@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import { useTextSelectionPopup, type SelectionContext } from "@/hooks/useTextSelectionPopup";
 
 // Let the bundler resolve and emit the worker as a static asset.
 // Works in dev, production, and standalone Docker — no manual paths needed.
@@ -51,7 +52,6 @@ export default function PDFViewer({
   const [numPages, setNumPages] = useState(pageCount);
   const [scale, setScale] = useState(1.2);
   const [error, setError] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
 
   // ── Zoom persistence ──────────────────────────
   useEffect(() => {
@@ -65,56 +65,49 @@ export default function PDFViewer({
   }, [scale]);
 
   // ── Selection popup ───────────────────────────
-  const [selPopup, setSelPopup] = useState<{ x: number; y: number; text: string; rect: RectAnchor; rects: RectAnchor[]; pageNumber: number } | null>(null);
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      setTimeout(() => {
-        const s = window.getSelection();
-        if (!s || s.isCollapsed || !s.toString().trim()) { setSelPopup(null); return; }
-        const txt = s.toString().trim();
-        if (txt.length < 2) { setSelPopup(null); return; }
-        const c = containerRef.current;
-        if (!c || !c.contains(s.getRangeAt(0).commonAncestorContainer)) { setSelPopup(null); return; }
-        const ancestor = s.getRangeAt(0).commonAncestorContainer;
-        const ancestorEl = ancestor.nodeType === Node.TEXT_NODE ? ancestor.parentElement! : (ancestor as Element);
-        const pageEl = ancestorEl?.closest?.(".react-pdf__Page");
-        if (!pageEl) { setSelPopup(null); return; }
-        const pageWrapper = pageEl.closest("[data-page]") as HTMLElement | null;
-        const pageNum = pageWrapper ? parseInt(pageWrapper.dataset.page || "1") : 1;
-        const dw = pageWrapper!.getBoundingClientRect();
-        const range = s.getRangeAt(0);
-        const sr = range.getBoundingClientRect();
-        const clientRects = Array.from(range.getClientRects());
+  const { popup: selPopup, containerRef, dismiss: dismissSelPopup } = useTextSelectionPopup(
+    ({ range }: SelectionContext) => {
+      const ancestor = range.commonAncestorContainer;
+      const ancestorEl = ancestor.nodeType === Node.TEXT_NODE ? ancestor.parentElement! : (ancestor as Element);
+      const pageEl = ancestorEl?.closest?.(".react-pdf__Page");
+      if (!pageEl) return null;
+      const pageWrapper = pageEl.closest("[data-page]") as HTMLElement | null;
+      if (!pageWrapper) return null;
+      const pageNum = parseInt(pageWrapper.dataset.page || "1");
+      const dw = pageWrapper.getBoundingClientRect();
+      const sr = range.getBoundingClientRect();
+      const clientRects = Array.from(range.getClientRects());
 
-        // Merge rects on the same visual line to avoid fragment overlaps
-        const lines: DOMRect[][] = [];
-        for (const cr of clientRects) {
-          const line = lines.find(l => Math.abs(l[0].top - cr.top) < 3);
-          if (line) line.push(cr);
-          else lines.push([cr]);
-        }
+      // Merge rects on the same visual line to avoid fragment overlaps
+      const lines: DOMRect[][] = [];
+      for (const cr of clientRects) {
+        const line = lines.find(l => Math.abs(l[0].top - cr.top) < 3);
+        if (line) line.push(cr);
+        else lines.push([cr]);
+      }
 
-        const rects: RectAnchor[] = lines.map(line => {
-          const l = Math.min(...line.map(r => r.left));
-          const r = Math.max(...line.map(r => r.right));
-          const t = Math.min(...line.map(r => r.top));
-          const b = Math.max(...line.map(r => r.bottom));
-          return {
-            left: (l - dw.left) / dw.width,
-            top: (t - dw.top) / dw.height,
-            right: (r - dw.left) / dw.width,
-            bottom: (b - dw.top) / dw.height,
-          };
-        });
-        setSelPopup({ x: sr.right + 4, y: sr.top - 12, text: txt, pageNumber: pageNum, rect: {
+      const rects: RectAnchor[] = lines.map(line => {
+        const l = Math.min(...line.map(r => r.left));
+        const r = Math.max(...line.map(r => r.right));
+        const t = Math.min(...line.map(r => r.top));
+        const b = Math.max(...line.map(r => r.bottom));
+        return {
+          left: (l - dw.left) / dw.width,
+          top: (t - dw.top) / dw.height,
+          right: (r - dw.left) / dw.width,
+          bottom: (b - dw.top) / dw.height,
+        };
+      });
+      return {
+        rect: {
           left: (sr.left - dw.left) / dw.width, top: (sr.top - dw.top) / dw.height,
           right: (sr.right - dw.left) / dw.width, bottom: (sr.bottom - dw.top) / dw.height,
-        }, rects });
-      }, 10);
-    };
-    document.addEventListener("mouseup", h);
-    return () => document.removeEventListener("mouseup", h);
-  }, []);
+        },
+        rects,
+        pageNumber: pageNum,
+      };
+    }
+  );
 
   // ── Highlight click popup (rendered at body level) ──
   const [hlPopup, setHlPopup] = useState<{ x: number; y: number; highlightId: number; color: string } | null>(null);
@@ -242,21 +235,21 @@ export default function PDFViewer({
 
       {/* Selection popup */}
       {selPopup && (onHighlightText || onCommentText || onSendToChat) && (
-        <div className="fixed z-[100] flex items-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl" style={{ left: selPopup.x, top: selPopup.y }}>
+        <div data-sel-popup className="fixed z-[100] flex items-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl" style={{ left: selPopup.x, top: selPopup.y }}>
           {onHighlightText && (
-            <button onClick={() => { onHighlightText({ text: selPopup.text, rect: selPopup.rect, rects: selPopup.rects, pageNumber: selPopup.pageNumber }); setSelPopup(null); window.getSelection()?.removeAllRanges(); }}
+            <button onClick={() => { onHighlightText({ text: selPopup.text, rect: selPopup.rect, rects: selPopup.rects, pageNumber: selPopup.pageNumber }); dismissSelPopup(); window.getSelection()?.removeAllRanges(); }}
               className="p-2 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-l-lg transition-colors" title="Highlight">
               <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
             </button>
           )}
           {onCommentText && (
-            <button onClick={() => { onCommentText({ text: selPopup.text, rect: selPopup.rect, rects: selPopup.rects, pageNumber: selPopup.pageNumber }); setSelPopup(null); window.getSelection()?.removeAllRanges(); }}
+            <button onClick={() => { onCommentText({ text: selPopup.text, rect: selPopup.rect, rects: selPopup.rects, pageNumber: selPopup.pageNumber }); dismissSelPopup(); window.getSelection()?.removeAllRanges(); }}
               className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="Comment">
               <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
             </button>
           )}
           {onSendToChat && (
-            <button onClick={() => { onSendToChat(selPopup.text); setSelPopup(null); window.getSelection()?.removeAllRanges(); }}
+            <button onClick={() => { onSendToChat(selPopup.text); dismissSelPopup(); window.getSelection()?.removeAllRanges(); }}
               className="p-2 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-r-lg transition-colors" title="Send to Chat">
               <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
             </button>

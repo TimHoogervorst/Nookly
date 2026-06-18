@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import type { PdfRecord } from "@/lib/db";
+import type { PdfRecord } from "@/lib/pdfs";
 
 export default function WelcomePage() {
   const [favorites, setFavorites] = useState<PdfRecord[]>([]);

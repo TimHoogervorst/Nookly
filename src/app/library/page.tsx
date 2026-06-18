@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import PDFUpload from "@/components/PDFUpload";
-import type { PdfRecord, RecordingRecord, Tag } from "@/lib/db";
+import type { PdfRecord } from "@/lib/pdfs";
+import type { RecordingRecord } from "@/lib/recordings";
+import type { Tag } from "@/lib/tags";
 
 const TAG_COLORS = [
   "#012B67", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6",

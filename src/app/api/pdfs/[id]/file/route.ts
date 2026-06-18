@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPdf } from "@/lib/db";
+import { getPdf } from "@/lib/pdfs";
 import { getPdfFilePath } from "@/lib/pdf";
 import fs from "fs/promises";
 

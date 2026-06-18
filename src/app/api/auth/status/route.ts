@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { countUsers, getDb } from "@/lib/db";
+import { countUsers } from "@/lib/users";
+import { getDb } from "@/lib/db-core";
 import { hashPassword } from "@/lib/auth";
 
 export async function GET(): Promise<NextResponse> {

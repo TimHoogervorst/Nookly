@@ -3,10 +3,10 @@ import {
   listRecordings,
   insertRecording,
   insertRecordingSegment,
-  getDb,
-  getSetting,
   updateRecordingStatus,
-} from "@/lib/db";
+} from "@/lib/recordings";
+import { getDb } from "@/lib/db-core";
+import { getSetting } from "@/lib/users";
 import {
   ensureRecordingsDir,
   generateRecordingFilename,

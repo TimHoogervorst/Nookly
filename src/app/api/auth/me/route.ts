@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserSession, getUserById } from "@/lib/db";
+import { getUserSession, getUserById } from "@/lib/users";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {

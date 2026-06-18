@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listTags, createTag } from "@/lib/db";
+import { listTags, createTag } from "@/lib/tags";
 
 export async function GET(): Promise<NextResponse> {
   try {

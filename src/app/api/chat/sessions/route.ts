@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listSessions, createSession } from "@/lib/db";
+import { listSessions, createSession } from "@/lib/chat";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {

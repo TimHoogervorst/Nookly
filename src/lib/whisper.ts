@@ -1,4 +1,4 @@
-import { getSetting } from "./db";
+import { getSetting } from "./users";
 
 export interface TranscriptionResult {
   text: string;

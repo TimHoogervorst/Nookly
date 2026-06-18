@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getComments, insertComment, insertCommentWithWords } from "@/lib/db";
+import { getComments, insertComment } from "@/lib/annotations";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
@@ -55,10 +55,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const comment =
-      start_word !== undefined
-        ? insertCommentWithWords(target_type, target_id, page_number, type, anchor_data, content, start_word, end_word)
-        : insertComment(target_type, target_id, page_number, type, anchor_data, content);
+    const comment = insertComment(target_type, target_id, page_number, type, anchor_data, content, { startWord: start_word, endWord: end_word });
     return NextResponse.json(comment, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: "Failed to create comment" }, { status: 500 });

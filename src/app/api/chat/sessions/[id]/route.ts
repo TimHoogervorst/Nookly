@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMessages, deleteSession } from "@/lib/db";
+import { getMessages, deleteSession } from "@/lib/chat";
 
 export async function GET(
   _request: NextRequest,

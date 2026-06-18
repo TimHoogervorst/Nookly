@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteTag, updateTag } from "@/lib/db";
+import { deleteTag, updateTag } from "@/lib/tags";
 
 export async function PATCH(
   request: NextRequest,

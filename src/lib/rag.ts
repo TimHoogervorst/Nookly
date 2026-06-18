@@ -1,4 +1,6 @@
-import { setSetting, getSetting } from "./db";
+import { setSetting, getSetting } from "./users";
+import { getChunksForPdf } from "./pdfs";
+import { getSegmentsForRecording } from "./recordings";
 
 const DEFAULT_CHUNK_SIZE = 800; // characters
 
@@ -100,4 +102,96 @@ export function buildContext(
     context += chunkWithPage;
   }
   return context.trim();
+}
+
+/**
+ * Retrieve context for a chat query from the appropriate source (PDF or recording).
+ * Generates a query embedding, scores chunks/segments by cosine similarity,
+ * takes the top 8, and returns a pre-built context string.
+ * Falls back to un-embedded chunks when no embeddings exist.
+ */
+export async function retrieveContext(
+  targetType: "pdf" | "recording",
+  targetId: number,
+  query: string
+): Promise<string> {
+  const label = targetType === "recording" ? "Segment" : "Page";
+  let context = "";
+
+  if (targetType === "recording") {
+    const segments = getSegmentsForRecording(targetId);
+    const segmentItems = segments.map((seg) => ({
+      text_content: seg.text,
+      page_number: seg.segment_index,
+      embedding: seg.embedding,
+    }));
+
+    const embeddedItems = segmentItems.filter((c) => c.embedding);
+    const textItems = segmentItems.filter((c) => !c.embedding);
+
+    if (embeddedItems.length > 0) {
+      try {
+        const queryEmbedding = await generateEmbedding(query);
+        const scored = embeddedItems
+          .map((item) => ({
+            ...item,
+            score: cosineSimilarity(queryEmbedding, JSON.parse(item.embedding!)),
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 8);
+        context = buildContext(
+          scored.map((c) => ({ text_content: c.text_content, page_number: c.page_number })),
+          4000,
+          label
+        );
+      } catch (err) {
+        console.error("RAG retrieval error:", err);
+      }
+    }
+
+    if (!context && textItems.length > 0) {
+      context = buildContext(
+        textItems.slice(0, 15).map((c) => ({
+          text_content: c.text_content,
+          page_number: c.page_number,
+        })),
+        4000,
+        label
+      );
+    }
+  } else {
+    // PDF path
+    const allChunks = getChunksForPdf(targetId);
+    const embeddedChunks = allChunks.filter((c) => c.embedding);
+    const textChunks = allChunks.filter((c) => !c.embedding);
+
+    if (embeddedChunks.length > 0) {
+      try {
+        const queryEmbedding = await generateEmbedding(query);
+        const scored = embeddedChunks
+          .map((chunk) => ({
+            ...chunk,
+            score: cosineSimilarity(queryEmbedding, JSON.parse(chunk.embedding!)),
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 8);
+        context = buildContext(
+          scored.map((c) => ({ text_content: c.text_content, page_number: c.page_number }))
+        );
+      } catch (err) {
+        console.error("RAG retrieval error:", err);
+      }
+    }
+
+    if (!context && textChunks.length > 0) {
+      context = buildContext(
+        textChunks.slice(0, 15).map((c) => ({
+          text_content: c.text_content,
+          page_number: c.page_number,
+        }))
+      );
+    }
+  }
+
+  return context;
 }

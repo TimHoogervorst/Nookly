@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteUserSession } from "@/lib/db";
+import { deleteUserSession } from "@/lib/users";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {

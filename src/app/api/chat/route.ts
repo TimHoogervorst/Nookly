@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import {
-  getChunksForPdf,
-  getSegmentsForRecording,
   insertMessage,
   createSession,
-  getSetting,
   getMessages,
-} from "@/lib/db";
-import { generateEmbedding, cosineSimilarity, buildContext } from "@/lib/rag";
+} from "@/lib/chat";
+import {
+  getSetting,
+} from "@/lib/users";
+import { retrieveContext } from "@/lib/rag";
 import { getSkill } from "@/lib/skills";
 
 export async function POST(request: NextRequest): Promise<Response> {
@@ -53,84 +53,9 @@ export async function POST(request: NextRequest): Promise<Response> {
     // Save user message
     insertMessage(sessionId, "user", message);
 
-    // ── RAG: Retrieve relevant chunks ──────────────
-    let context = "";
+    // ── RAG: Retrieve relevant context ──────────────
+    const context = await retrieveContext(target_type, target_id, message);
     const label = target_type === "recording" ? "Segment" : "Page";
-
-    if (target_type === "recording") {
-      // Fetch recording segments instead of PDF chunks
-      const segments = getSegmentsForRecording(target_id);
-      const segmentItems = segments.map((seg) => ({
-        text_content: seg.text,
-        page_number: seg.segment_index,
-        embedding: seg.embedding,
-      }));
-
-      const embeddedItems = segmentItems.filter((c) => c.embedding);
-      const textItems = segmentItems.filter((c) => !c.embedding);
-
-      if (embeddedItems.length > 0) {
-        try {
-          const queryEmbedding = await generateEmbedding(message);
-          const scored = embeddedItems
-            .map((item) => ({
-              ...item,
-              score: cosineSimilarity(queryEmbedding, JSON.parse(item.embedding!)),
-            }))
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 8);
-          context = buildContext(
-            scored.map((c) => ({ text_content: c.text_content, page_number: c.page_number })),
-            4000,
-            label
-          );
-        } catch (err) {
-          console.error("RAG retrieval error:", err);
-        }
-      }
-
-      if (!context && textItems.length > 0) {
-        context = buildContext(
-          textItems.slice(0, 15).map((c) => ({
-            text_content: c.text_content,
-            page_number: c.page_number,
-          })),
-          4000,
-          label
-        );
-      }
-    } else {
-      // PDF path (existing logic)
-      const allChunks = getChunksForPdf(target_id);
-      const embeddedChunks = allChunks.filter((c) => c.embedding);
-      const textChunks = allChunks.filter((c) => !c.embedding);
-
-      if (embeddedChunks.length > 0) {
-        try {
-          const queryEmbedding = await generateEmbedding(message);
-          const scored = embeddedChunks
-            .map((chunk) => ({
-              ...chunk,
-              score: cosineSimilarity(queryEmbedding, JSON.parse(chunk.embedding!)),
-            }))
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 8);
-          context = buildContext(
-            scored.map((c) => ({ text_content: c.text_content, page_number: c.page_number }))
-          );
-        } catch (err) {
-          console.error("RAG retrieval error:", err);
-        }
-      }
-
-      if (!context && textChunks.length > 0) {
-        context = buildContext(
-          textChunks
-            .slice(0, 15)
-            .map((c) => ({ text_content: c.text_content, page_number: c.page_number }))
-        );
-      }
-    }
 
     // ── Build system prompt ────────────────────────
     const skill = skillId ? getSkill(skillId) : undefined;

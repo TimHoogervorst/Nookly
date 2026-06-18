@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPdf, deletePdf, renamePdf } from "@/lib/db";
+import { getPdf, deletePdf, renamePdf } from "@/lib/pdfs";
 import { deletePdfFile } from "@/lib/pdf";
 
 export async function GET(

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
+import { useTextSelectionPopup, type SelectionContext } from "@/hooks/useTextSelectionPopup";
 
 interface Segment {
   segment_index: number;
@@ -75,17 +76,19 @@ export default function TranscriptViewer({
   highlights = [],
   onCommentClick,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const segmentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const [activeSegment, setActiveSegment] = useState<number | null>(null);
 
-  // Selection popup state (matching PDFViewer pattern)
-  const [selPopup, setSelPopup] = useState<{
-    x: number;
-    y: number;
-    text: string;
-    segmentIndex: number;
-  } | null>(null);
+  // Selection popup (shared hook with PDFViewer)
+  const { popup: selPopup, containerRef, dismiss: dismissSelPopup } = useTextSelectionPopup(
+    ({ range }: SelectionContext) => {
+      const segEl = (range.commonAncestorContainer as Element).closest?.(
+        "[data-segment]"
+      ) as HTMLElement | null;
+      if (!segEl) return null;
+      return { segmentIndex: parseInt(segEl.dataset.segment || "0") };
+    }
+  );
 
   const hasCallbacks = !!(onHighlightText || onCommentText || onSendToChat);
 
@@ -123,60 +126,6 @@ export default function TranscriptViewer({
     segmentRefs.current.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
   }, [segments, onSegmentChange]);
-
-  // Global mouseup handler for text selection popup (PDFViewer pattern)
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      // Small delay to let the browser settle the selection
-      setTimeout(() => {
-        const sel = window.getSelection();
-        if (!sel || sel.isCollapsed || !sel.toString().trim()) {
-          setSelPopup(null);
-          return;
-        }
-        const txt = sel.toString().trim();
-        if (txt.length < 2) {
-          setSelPopup(null);
-          return;
-        }
-        const container = containerRef.current;
-        if (
-          !container ||
-          !container.contains(sel.getRangeAt(0).commonAncestorContainer)
-        ) {
-          setSelPopup(null);
-          return;
-        }
-        // Find which segment the selection is in
-        const segEl = (sel.getRangeAt(0).commonAncestorContainer as Element).closest?.(
-          "[data-segment]"
-        ) as HTMLElement | null;
-        const segIdx = segEl ? parseInt(segEl.dataset.segment || "0") : 0;
-        const sr = sel.getRangeAt(0).getBoundingClientRect();
-        setSelPopup({
-          x: sr.right + 4,
-          y: sr.top - 12,
-          text: txt,
-          segmentIndex: segIdx,
-        });
-      }, 10);
-    };
-    document.addEventListener("mouseup", handler);
-    return () => document.removeEventListener("mouseup", handler);
-  }, []);
-
-  // Close popup on click outside
-  useEffect(() => {
-    if (!selPopup) return;
-    const handler = (e: MouseEvent) => {
-      const popup = document.querySelector("[data-sel-popup]");
-      if (popup && !popup.contains(e.target as Node)) {
-        setSelPopup(null);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [selPopup]);
 
   // Compute waveform bars for a single segment
   const getSegmentAmplitudes = useCallback(
@@ -453,7 +402,7 @@ export default function TranscriptViewer({
             <button
               onClick={() => {
                 onHighlightText(selPopup.text, selPopup.segmentIndex);
-                setSelPopup(null);
+                dismissSelPopup();
                 window.getSelection()?.removeAllRanges();
               }}
               className="p-2 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-l-lg transition-colors"
@@ -472,7 +421,7 @@ export default function TranscriptViewer({
             <button
               onClick={() => {
                 onCommentText(selPopup.text, selPopup.segmentIndex);
-                setSelPopup(null);
+                dismissSelPopup();
                 window.getSelection()?.removeAllRanges();
               }}
               className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
@@ -497,7 +446,7 @@ export default function TranscriptViewer({
             <button
               onClick={() => {
                 onSendToChat(selPopup.text);
-                setSelPopup(null);
+                dismissSelPopup();
                 window.getSelection()?.removeAllRanges();
               }}
               className="p-2 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-r-lg transition-colors"

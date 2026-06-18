@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getHighlights, insertHighlight, insertHighlightWithWords } from "@/lib/db";
+import { getHighlights, insertHighlight } from "@/lib/annotations";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
@@ -41,10 +41,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 400 }
       );
     }
-    const h =
-      start_word !== undefined
-        ? insertHighlightWithWords(target_type, target_id, page_number, color || "#fef08a", anchor_data, start_word, end_word)
-        : insertHighlight(target_type, target_id, page_number, color || "#fef08a", anchor_data);
+    const h = insertHighlight(target_type, target_id, page_number, color || "#fef08a", anchor_data, { startWord: start_word, endWord: end_word });
     return NextResponse.json(h, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: "Failed to create highlight" }, { status: 500 });

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { insertPdf, insertChunk, getDb, getSetting } from "@/lib/db";
+import { insertPdf, insertChunk } from "@/lib/pdfs";
+import { getDb } from "@/lib/db-core";
+import { getSetting } from "@/lib/users";
 import { ensurePdfDir, generateStoredFilename, getPdfFilePath, extractPdfFullText } from "@/lib/pdf";
 import { splitIntoChunks, generateEmbedding } from "@/lib/rag";
 import fs from "fs/promises";

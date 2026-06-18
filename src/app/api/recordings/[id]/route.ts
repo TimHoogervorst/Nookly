@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRecording, deleteRecording, renameRecording, getSegmentsForRecording } from "@/lib/db";
+import { getRecording, deleteRecording, renameRecording, getSegmentsForRecording } from "@/lib/recordings";
 import { deleteRecordingFile, groupBySentences, type RawSegment } from "@/lib/recordings";
 
 export async function GET(

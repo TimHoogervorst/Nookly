@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRecording } from "@/lib/db";
+import { getRecording } from "@/lib/recordings";
 import { getRecordingFilePath } from "@/lib/recordings";
 import fs from "fs/promises";
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteHighlight, updateHighlightColor } from "@/lib/db";
+import { deleteHighlight, updateHighlightColor } from "@/lib/annotations";
 
 export async function PATCH(
   request: NextRequest,

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRecording, updateRecordingStatus, getSetting } from "@/lib/db";
+import { getRecording, updateRecordingStatus } from "@/lib/recordings";
+import { getSetting } from "@/lib/users";
 import { getRecordingFilePath, groupBySentences } from "@/lib/recordings";
 import { transcribeAudio } from "@/lib/whisper";
 import { splitIntoChunks, generateEmbedding } from "@/lib/rag";
-import { insertRecordingSegment } from "@/lib/db";
+import { insertRecordingSegment } from "@/lib/recordings";
 import fs from "fs/promises";
 
 export async function POST(
@@ -48,7 +49,7 @@ async function retryTranscription(recordingId: number, filename: string): Promis
     const blocks = groupBySentences(segments, 10);
 
     // Delete old segments and re-insert
-    const { getDb } = await import("@/lib/db");
+    const { getDb } = await import("@/lib/db-core");
     getDb()
       .prepare("DELETE FROM recording_segments WHERE recording_id = ?")
       .run(recordingId);
