@@ -95,22 +95,27 @@ describe("getPDFAnchor", () => {
     document.body.removeChild(pageWrapper);
   });
 
-  it("returns normalized rects for a normal multi-line selection", () => {
+  it("merges adjacent lines with overlapping horizontal spans into fewer rects", () => {
     const { pageWrapper, textNode } = setupPageDOM(3);
+    // Three consecutive lines with same horizontal span — should merge into 1 rect
     const line1 = new DOMRect(100, 200, 600, 20);
-    const line2 = new DOMRect(100, 220, 550, 20);
+    const line2 = new DOMRect(100, 221, 600, 20);
+    const line3 = new DOMRect(100, 242, 600, 20);
 
-    const range = makeRange(textNode, [line1, line2]);
+    const range = makeRange(textNode, [line1, line2, line3]);
     const result = getPDFAnchor({ text: "multi-line text", range });
 
     expect(result).not.toBeNull();
     expect(result!.pageNumber).toBe(3);
-    // Both lines should be preserved (they are on different visual lines)
-    expect(result!.rects).toHaveLength(2);
+    // 3 visual lines with overlapping spans → 1 merged rect
+    expect(result!.rects).toHaveLength(1);
 
-    for (const r of result!.rects!) {
-      expect(r.right - r.left).toBeGreaterThan(0);
-    }
+    const merged = result!.rects![0];
+    expect(merged.right - merged.left).toBeGreaterThan(0);
+    // The merged rect should span all three lines
+    const dw = pageWrapper.getBoundingClientRect();
+    expect(merged.top).toBeCloseTo((200 - dw.top) / dw.height);
+    expect(merged.bottom).toBeCloseTo((262 - dw.top) / dw.height);
 
     document.body.removeChild(pageWrapper);
   });

@@ -5,6 +5,7 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { useTextSelectionPopup, type SelectionContext } from "@/hooks/useTextSelectionPopup";
+import { mergeAdjacentRects } from "@/lib/rect-utils";
 
 // Let the bundler resolve and emit the worker as a static asset.
 // Works in dev, production, and standalone Docker — no manual paths needed.
@@ -69,6 +70,8 @@ export function getPDFAnchor({ text, range }: SelectionContext): TextAnchor | nu
       bottom: (b - dw.top) / dw.height,
     };
   });
+  const mergedRects = mergeAdjacentRects(rects);
+
   return {
     text,
     rect: {
@@ -77,7 +80,7 @@ export function getPDFAnchor({ text, range }: SelectionContext): TextAnchor | nu
       right: (sr.right - dw.left) / dw.width,
       bottom: (sr.bottom - dw.top) / dw.height,
     },
-    rects,
+    rects: mergedRects,
     pageNumber: pageNum,
   };
 }
@@ -201,17 +204,36 @@ export default function PDFViewer({
                   try {
                     const a = JSON.parse(h.anchor_data);
                     const rects: RectAnchor[] = a.rects || (a.rect ? [a.rect] : []);
-                    return rects.map((r, i) => {
-                      const w = Math.max((r.right - r.left) * 100, 2);
-                      const ht = Math.max((r.bottom - r.top) * 100, 3);
-                      return (
-                        <div key={`hl-${h.id}-${i}`} data-highlight-id={h.id}
-                          onClick={e => { e.stopPropagation(); const b = (e.target as HTMLElement).getBoundingClientRect(); setHlPopup({ x: b.right, y: b.bottom - 4, highlightId: h.id, color: h.color }); }}
-                          className="absolute cursor-pointer opacity-35 hover:opacity-55 transition-opacity z-10"
-                          style={{ backgroundColor: h.color, left: `${r.left*100}%`, top: `${r.top*100}%`, width: `${w}%`, height: `${ht}%` }}
-                        />
-                      );
-                    });
+                    if (rects.length === 0) return null;
+                    const merged = mergeAdjacentRects(rects);
+                    const overallLeft = Math.min(...merged.map(r => r.left));
+                    const overallTop = Math.min(...merged.map(r => r.top));
+                    const overallRight = Math.max(...merged.map(r => r.right));
+                    const overallBottom = Math.max(...merged.map(r => r.bottom));
+                    const overallW = overallRight - overallLeft;
+                    const overallH = overallBottom - overallTop;
+                    if (overallW <= 0 || overallH <= 0) return null;
+                    return (
+                      <div key={`hl-${h.id}`} data-highlight-id={h.id}
+                        onClick={e => { e.stopPropagation(); const b = (e.target as HTMLElement).getBoundingClientRect(); setHlPopup({ x: b.right, y: b.bottom - 4, highlightId: h.id, color: h.color }); }}
+                        className="absolute cursor-pointer z-10"
+                        style={{ left: `${overallLeft*100}%`, top: `${overallTop*100}%`, width: `${Math.max(overallW*100, 2)}%`, height: `${Math.max(overallH*100, 3)}%` }}
+                      >
+                        <div className="absolute inset-0 opacity-35 hover:opacity-55 transition-opacity">
+                          {merged.map((r, i) => (
+                            <div key={i} className="absolute"
+                              style={{
+                                left: `${((r.left - overallLeft) / overallW) * 100}%`,
+                                top: `${((r.top - overallTop) / overallH) * 100}%`,
+                                width: `${Math.max(((r.right - r.left) / overallW) * 100, 2)}%`,
+                                height: `${Math.max(((r.bottom - r.top) / overallH) * 100, 3)}%`,
+                                backgroundColor: h.color,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
                   } catch { return null; }
                 })}
 
@@ -221,21 +243,37 @@ export default function PDFViewer({
                     const a = JSON.parse(c.anchor_data);
                     if (c.type === "text_anchor" && a.rect) {
                       const rects: RectAnchor[] = a.rects || [a.rect];
+                      if (rects.length === 0) return null;
+                      const merged = mergeAdjacentRects(rects);
                       const isHighlighted = scrollToCommentId === c.id;
-                      return rects.map((r, i) => {
-                        const w = Math.max((r.right - r.left) * 100, 2);
-                        const ht = Math.max((r.bottom - r.top) * 100, 3);
-                        return (
-                          <div key={`cm-${c.id}-${i}`} data-comment-id={c.id}
-                            onClick={e => { e.stopPropagation(); const b = (e.target as HTMLElement).getBoundingClientRect(); setCmPopup({ x: b.right + 4, y: b.top, commentId: c.id, content: c.content || "" }); }}
-                            className="absolute cursor-pointer group/cm z-20"
-                            style={{ left: `${r.left*100}%`, top: `${r.top*100}%`, width: `${w}%`, height: `${ht}%` }}
-                          >
-                            <div className={`absolute inset-0 border-b-2 border-dashed transition-colors ${isHighlighted ? 'bg-blue-400/50 border-blue-600 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-blue-200/25 border-blue-400 group-hover/cm:bg-blue-300/35'}`} />
-                            {i === 0 && <div className={`absolute -right-2 -top-2 w-4 h-4 rounded-full flex items-center justify-center shadow text-white text-[8px] transition-all ${isHighlighted ? 'bg-blue-600 scale-125 opacity-100' : 'bg-blue-500 opacity-0 group-hover/cm:opacity-100'}`}>💬</div>}
+                      const overallLeft = Math.min(...merged.map(r => r.left));
+                      const overallTop = Math.min(...merged.map(r => r.top));
+                      const overallRight = Math.max(...merged.map(r => r.right));
+                      const overallBottom = Math.max(...merged.map(r => r.bottom));
+                      const overallW = overallRight - overallLeft;
+                      const overallH = overallBottom - overallTop;
+                      if (overallW <= 0 || overallH <= 0) return null;
+                      return (
+                        <div key={`cm-${c.id}`} data-comment-id={c.id}
+                          onClick={e => { e.stopPropagation(); const b = (e.target as HTMLElement).getBoundingClientRect(); setCmPopup({ x: b.right + 4, y: b.top, commentId: c.id, content: c.content || "" }); }}
+                          className="absolute cursor-pointer group/cm z-20"
+                          style={{ left: `${overallLeft*100}%`, top: `${overallTop*100}%`, width: `${Math.max(overallW*100, 2)}%`, height: `${Math.max(overallH*100, 3)}%` }}
+                        >
+                          <div className="absolute inset-0">
+                            {merged.map((r, i) => (
+                              <div key={i} className={`absolute border-b-2 border-dashed transition-colors ${isHighlighted ? 'bg-blue-400/50 border-blue-600 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-blue-200/25 border-blue-400 group-hover/cm:bg-blue-300/35'}`}
+                                style={{
+                                  left: `${((r.left - overallLeft) / overallW) * 100}%`,
+                                  top: `${((r.top - overallTop) / overallH) * 100}%`,
+                                  width: `${Math.max(((r.right - r.left) / overallW) * 100, 2)}%`,
+                                  height: `${Math.max(((r.bottom - r.top) / overallH) * 100, 3)}%`,
+                                }}
+                              />
+                            ))}
                           </div>
-                        );
-                      });
+                          <div className={`absolute -right-2 -top-2 w-4 h-4 rounded-full flex items-center justify-center shadow text-white text-[8px] transition-all ${isHighlighted ? 'bg-blue-600 scale-125 opacity-100' : 'bg-blue-500 opacity-0 group-hover/cm:opacity-100'}`}>💬</div>
+                        </div>
+                      );
                     }
                     return (
                       <div key={`cm-${c.id}`} data-comment-id={c.id}
